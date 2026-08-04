@@ -64,23 +64,32 @@
 
 ## 6. Updater
 
-- [ ] 6.1 TUF metadata verification per 1.1's adopted client/verifier: root anchor
-      embedded in binary, timestamp→snapshot→targets order, version+expiry checks
-      (rollback/freeze/mix-and-match scenarios in pack-update spec become tests).
-- [ ] 6.2 Download missing blobs into cas (hash-verified on arrival, resumable); version
-      activatable only when complete; background, never blocks startup.
-- [ ] 6.3 Activation flip + previous retention + failure auto-rollback wired to the boot
-      ready-state signal.
-- [ ] 6.4 Emit registry events (`pack_activated`, `pack_rolled_back`) with AsyncAPI
-      descriptions per D7.
+- [x] 6.1 TUF metadata verification per 1.1's adopted client/verifier: root anchor
+      embedded in binary, timestamp→snapshot→targets order, version+expiry checks.
+      Delegated to `tough` (adopted) behind the update-source port; datastore persisted
+      so freshness checks stick across runs. UNVERIFIED end-to-end: no signed repo
+      fixture exists until publisher tooling lands (see design open questions).
+- [x] 6.2 Download missing blobs into cas (hash-verified on arrival, resumable); version
+      activatable only when complete; background, never blocks startup. (Orchestration
+      fully tested against the port with a fake source: resume-without-refetch,
+      tamper-reject, incomplete-never-activates.)
+- [x] 6.3 Activation flip + previous retention + failure auto-rollback wired to the boot
+      ready-state signal. (Pending markers; shell_ready clears, shell_failed rolls back
+      + reloads, startup sweep catches crash-before-ready. Tested.)
+- [x] 6.4 Emit registry events (`pack_activated`, `pack_rolled_back`) with AsyncAPI
+      descriptions per D7. (`schemas/events.asyncapi.yaml`.)
 
 ## 7. Close-out
 
-- [ ] 7.1 Architecture diagram (Mermaid, `docs/architecture/`) of protocol/store/updater
+- [x] 7.1 Architecture diagram (Mermaid, `docs/architecture/`) of protocol/store/updater
       as-built (Rule 1); docs updated in the same change set (Rule 8).
-- [ ] 7.2 Add real check commands to `.canon/checks.md` rows this change creates
+- [x] 7.2 Add real check commands to `.canon/checks.md` rows this change creates
       (Rust build/test/clippy/fmt for `app/src-tauri`).
-- [ ] 7.3 Run all checks (Rule 6); report anything unrunnable (e.g. SAC-blocked) as
-      unverified, explicitly.
-- [ ] 7.4 Plugin-shape conformance pass against D8 (no per-caller trust in handler, no
-      grants field, no new ambient globals) — record result in design.md.
+- [x] 7.3 Run all checks (Rule 6): cargo fmt/clippy(-D warnings)/test (45 green) /
+      build; go vet/build; mdlinks (no broken links); markdown format; tokei size
+      review (max source file 409 lines); final E2E boot (SHELL ready, clean stderr).
+      UNVERIFIED remainder: TUF end-to-end against a signed repository (no publisher
+      tooling yet) and `tauri build` installer bundling (dev builds only this session).
+- [x] 7.4 Plugin-shape conformance pass against D8 (no per-caller trust in handler, no
+      grants field, no new ambient globals) — PASS after removing one debug global;
+      recorded in design.md.

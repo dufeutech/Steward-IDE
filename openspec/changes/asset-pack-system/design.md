@@ -202,6 +202,10 @@ Consequences now: the protocol handler must not grow per-caller trust distinctio
 plugin change defines it; nothing in the shell may expose pack internals as globals
 beyond what xkin itself defines.
 
+**Conformance pass (task 7.4, 2026-08-04): PASS.** Handler has no caller-identity
+concept; manifest schema is closed (`additionalProperties: false`, no grants field);
+one ambient global (`window.__steward`, a debug handle) was found and removed.
+
 ### D9. Pack tooling lives out-of-band
 
 Manifest generation + signing is a publish-time CLI step in the xkin repo (per
