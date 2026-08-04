@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hlop3z/steward-ide/schemas/pack.manifest.schema.json",
+  "title": "Asset Pack Manifest",
+  "description": "Fully describes one immutable version of an asset pack: identity, every file with its content hash, and the ordered entry points the shell loads. A file absent from this manifest is not part of the pack. See openspec change asset-pack-system, capability pack-manifest.",
+  "type": "object",
+  "required": ["format_version", "id", "version", "files", "entry"],
+  "additionalProperties": false,
+  "properties": {
+    "format_version": {
+      "description": "Manifest format version. Clients MUST refuse (not partially interpret) any manifest whose format_version exceeds what they support.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "id": {
+      "description": "Internal registry identifier, Rule 11 grammar: pack:<namespace>.<object_name>, lowercase snake_case.",
+      "type": "string",
+      "pattern": "^pack:[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+    },
+    "purl": {
+      "description": "Standard package-URL of the external origin this pack was generated from, when one exists (e.g. pkg:npm/%40dufeut/xkin@0.1.0).",
+      "type": "string",
+      "pattern": "^pkg:[a-z0-9.+-]+/.+$"
+    },
+    "version": {
+      "description": "Semantic version of this pack (SemVer 2.0.0).",
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+    },
+    "files": {
+      "description": "Complete enumeration of the pack's files. Verification fails if any listed file is missing or mismatched, or if unlisted files are present in the staged tree.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/file_entry" }
+    },
+    "entry": {
+      "description": "Ordered entry points the shell loads; tags are generated from these, never hand-written.",
+      "type": "object",
+      "required": ["scripts", "styles"],
+      "additionalProperties": false,
+      "properties": {
+        "scripts": {
+          "description": "Script entry points, in load order. Each MUST match a path listed in files.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/relative_path" }
+        },
+        "styles": {
+          "description": "Stylesheet entry points, in load order. Each MUST match a path listed in files.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/relative_path" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "relative_path": {
+      "description": "Forward-slash relative path inside the pack: no leading slash, no drive letter, no '.' or '..' segments, no backslashes.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))[^\\\\]+$"
+    },
+    "file_entry": {
+      "type": "object",
+      "required": ["path", "size", "sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "$ref": "#/$defs/relative_path" },
+        "size": {
+          "description": "File size in bytes.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "description": "Lowercase hex SHA-256 of the file content; also its key in the content-addressed store.",
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    }
+  }
+}
