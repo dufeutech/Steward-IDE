@@ -13,7 +13,11 @@ pub enum VersionIssue {
     MissingBlob { path: String, sha256: String },
     /// A blob exists but its size disagrees with the manifest (corruption signal;
     /// hash re-verification on read is the store adapter's duty).
-    SizeMismatch { path: String, expected: u64, found: u64 },
+    SizeMismatch {
+        path: String,
+        expected: u64,
+        found: u64,
+    },
     /// A file present in the staged tree that the manifest does not list
     /// (spec: unlisted files cause verification failure).
     UnlistedFile { path: String },
@@ -111,8 +115,7 @@ mod tests {
 
     #[test]
     fn scenario_unlisted_staged_file_fails_verification() {
-        let staged: HashSet<String> =
-            ["a.js", "b.css", "sneaky.js"].map(String::from).into();
+        let staged: HashSet<String> = ["a.js", "b.css", "sneaky.js"].map(String::from).into();
         let issues = verify_version(&manifest(), &full_store(), Some(&staged));
         assert_eq!(
             issues,

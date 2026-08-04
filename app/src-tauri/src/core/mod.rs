@@ -6,6 +6,7 @@
 pub mod manifest;
 pub mod resolve;
 pub mod shell;
+pub mod updater;
 pub mod verify;
 
 pub use manifest::{Manifest, ManifestError, FORMAT_VERSION_SUPPORTED};

@@ -5,7 +5,9 @@ use super::manifest::Manifest;
 
 /// Escape the characters that matter inside a double-quoted HTML attribute.
 fn attr_escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;")
+    s.replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
 }
 
 /// Generate `<script>`/`<link>` tags for a pack's entry points, in manifest order,
@@ -16,7 +18,13 @@ pub fn entry_tags(manifest: &Manifest, base: &str) -> (String, String) {
         .entry
         .styles
         .iter()
-        .map(|p| format!(r#"<link rel="stylesheet" href="{}/{}" />"#, base, attr_escape(p)))
+        .map(|p| {
+            format!(
+                r#"<link rel="stylesheet" href="{}/{}" />"#,
+                base,
+                attr_escape(p)
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n    ");
     let scripts = manifest

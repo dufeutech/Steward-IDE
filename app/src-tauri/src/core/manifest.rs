@@ -172,7 +172,10 @@ mod tests {
         v["id"] = serde_json::json!("Pack:Assets.Bad"); // wrong casing
         let err = parse(&v).unwrap_err();
         assert!(matches!(err, ManifestError::Schema(_)));
-        assert!(err.to_string().contains("id"), "error names the field: {err}");
+        assert!(
+            err.to_string().contains("id"),
+            "error names the field: {err}"
+        );
     }
 
     #[test]

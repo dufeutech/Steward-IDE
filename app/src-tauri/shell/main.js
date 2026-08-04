@@ -13,7 +13,9 @@ window.addEventListener("DOMContentLoaded", () => {
       ].join("\n"),
       language: "typescript",
     });
-    window.__steward = { editor };
+    // Note: deliberately NO window-global handle to the editor — capabilities are
+    // granted explicitly, never discovered ambiently (design D8).
+    void editor;
     status.textContent = "ready";
     // The boot ready-state signal (baseline-boot spec; updater task 6.3 listens).
     if (window.__TAURI__) {

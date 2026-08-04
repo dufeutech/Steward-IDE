@@ -14,7 +14,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use sha2::{Digest, Sha256};
 
@@ -26,9 +26,14 @@ pub struct FsStore {
 pub enum StoreError {
     Io(io::Error),
     /// Blob content did not match the hash it is keyed by.
-    Corrupt { sha256: String },
+    Corrupt {
+        sha256: String,
+    },
     /// Attempted to activate a version whose ref file doesn't exist.
-    UnknownVersion { pack: String, version: String },
+    UnknownVersion {
+        pack: String,
+        version: String,
+    },
 }
 
 impl From<io::Error> for StoreError {
@@ -58,17 +63,14 @@ fn hex_sha256(bytes: &[u8]) -> String {
 impl FsStore {
     pub fn open(root: impl Into<PathBuf>) -> Result<Self, StoreError> {
         let root = root.into();
-        for dir in ["cas/sha256", "refs", "active", "previous"] {
+        for dir in ["cas/sha256", "refs", "active", "previous", "pending"] {
             fs::create_dir_all(root.join(dir))?;
         }
         Ok(Self { root })
     }
 
     fn blob_path(&self, sha256: &str) -> PathBuf {
-        self.root
-            .join("cas/sha256")
-            .join(&sha256[..2])
-            .join(sha256)
+        self.root.join("cas/sha256").join(&sha256[..2]).join(sha256)
     }
 
     /// Store a blob, verifying its content hash on arrival. Idempotent.
@@ -142,7 +144,12 @@ impl FsStore {
     }
 
     pub fn get_ref(&self, pack: &str, version: &str) -> Result<Option<Vec<u8>>, StoreError> {
-        match fs::read(self.root.join("refs").join(pack).join(format!("{version}.json"))) {
+        match fs::read(
+            self.root
+                .join("refs")
+                .join(pack)
+                .join(format!("{version}.json")),
+        ) {
             Ok(b) => Ok(Some(b)),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(e.into()),
@@ -192,6 +199,34 @@ impl FsStore {
             }
         }
         self.write_pointer("active", pack, version)
+    }
+
+    /// Mark a freshly activated version as unconfirmed. Cleared by the shell's ready
+    /// signal; a marker still present at next startup means the version never booted
+    /// (spec pack-store: new version fails to boot → automatic rollback).
+    pub fn set_pending(&self, pack: &str, version: &str) -> Result<(), StoreError> {
+        self.write_pointer("pending", pack, version)
+    }
+
+    /// Clear and return the pending marker, if any.
+    pub fn take_pending(&self, pack: &str) -> Result<Option<String>, StoreError> {
+        let pending = self.read_pointer("pending", pack)?;
+        if pending.is_some() {
+            fs::remove_file(self.pointer("pending", pack))?;
+        }
+        Ok(pending)
+    }
+
+    /// All packs with a pending marker (checked at boot).
+    pub fn pending_packs(&self) -> Result<Vec<String>, StoreError> {
+        let mut out = Vec::new();
+        for entry in fs::read_dir(self.root.join("pending"))? {
+            let entry = entry?;
+            if entry.path().extension().is_none() {
+                out.push(entry.file_name().to_string_lossy().into_owned());
+            }
+        }
+        Ok(out)
     }
 
     /// Reactivate the retained previous version (spec: manual rollback, no re-download).
@@ -298,10 +333,7 @@ mod tests {
         let hash = hex_sha256(&bytes);
         s.put_blob(&hash, &bytes).unwrap();
         fs::write(s.blob_path(&hash), b"tampered").unwrap();
-        assert!(matches!(
-            s.get_blob(&hash),
-            Err(StoreError::Corrupt { .. })
-        ));
+        assert!(matches!(s.get_blob(&hash), Err(StoreError::Corrupt { .. })));
     }
 
     #[test]

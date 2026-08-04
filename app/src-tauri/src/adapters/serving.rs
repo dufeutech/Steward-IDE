@@ -19,6 +19,16 @@ use crate::core::{self, Manifest};
 pub struct AppConfig {
     pub csp: String,
     pub packs: Vec<PackConfig>,
+    /// Absent = updater disabled; the app runs on store/baseline content forever
+    /// (spec pack-update: failure or absence of the endpoint never blocks use).
+    #[serde(default)]
+    pub update: Option<UpdateEndpoint>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UpdateEndpoint {
+    pub metadata_url: String,
+    pub targets_url: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -58,19 +68,17 @@ impl ServeState {
     /// (bundled as Tauri resources); `store_root` is the writable pack store.
     pub fn new(resource_root: PathBuf, store_root: PathBuf) -> Result<Self, String> {
         let read = |rel: &str| {
-            std::fs::read(resource_root.join(rel))
-                .map_err(|e| format!("resource {rel}: {e}"))
+            std::fs::read(resource_root.join(rel)).map_err(|e| format!("resource {rel}: {e}"))
         };
         let config: AppConfig = serde_json::from_slice(&read("config/app.config.json")?)
             .map_err(|e| format!("app.config.json: {e}"))?;
-        let media: HashMap<String, String> =
-            serde_json::from_slice::<HashMap<String, serde_json::Value>>(
-                &read("config/media_types.json")?,
-            )
-            .map_err(|e| format!("media_types.json: {e}"))?
-            .into_iter()
-            .filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string())))
-            .collect();
+        let media: HashMap<String, String> = serde_json::from_slice::<
+            HashMap<String, serde_json::Value>,
+        >(&read("config/media_types.json")?)
+        .map_err(|e| format!("media_types.json: {e}"))?
+        .into_iter()
+        .filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string())))
+        .collect();
         let schema: serde_json::Value =
             serde_json::from_slice(&read("schemas/pack.manifest.schema.json")?)
                 .map_err(|e| format!("manifest schema: {e}"))?;
@@ -175,8 +183,7 @@ impl ServeState {
     }
 
     fn shell_index(&self) -> Option<Vec<u8>> {
-        let template =
-            std::fs::read_to_string(self.shell_dir.join("index.html")).ok()?;
+        let template = std::fs::read_to_string(self.shell_dir.join("index.html")).ok()?;
         let mut styles = Vec::new();
         let mut scripts = Vec::new();
         for pc in &self.config.packs {
@@ -214,8 +221,7 @@ impl ServeState {
         }
         if let Some(rest) = path.strip_prefix("/packs/") {
             let mut it = rest.splitn(3, '/');
-            let (Some(pack), Some(version), Some(rel)) = (it.next(), it.next(), it.next())
-            else {
+            let (Some(pack), Some(version), Some(rel)) = (it.next(), it.next(), it.next()) else {
                 return not_found("bad pack path");
             };
             let Some(rp) = self.resolve_pack(pack) else {
@@ -235,6 +241,33 @@ impl ServeState {
 
     pub fn csp(&self) -> &str {
         &self.config.csp
+    }
+
+    pub fn store(&self) -> &FsStore {
+        &self.store
+    }
+
+    /// Configured pack names (URL segments) with their registry ids.
+    pub fn pack_ids(&self) -> Vec<(String, String)> {
+        self.config
+            .packs
+            .iter()
+            .map(|p| (p.pack.clone(), p.id.clone()))
+            .collect()
+    }
+
+    /// Drop the cached resolution for a pack — the next request re-runs the fallback
+    /// chain (the activation seam: pointer flips become visible on reload).
+    pub fn invalidate(&self, pack: &str) {
+        self.resolved.lock().expect("poisoned").remove(pack);
+    }
+
+    pub fn update_endpoint(&self) -> Option<&UpdateEndpoint> {
+        self.config.update.as_ref()
+    }
+
+    pub fn manifest_schema(&self) -> &serde_json::Value {
+        &self.schema
     }
 }
 
@@ -274,7 +307,10 @@ mod tests {
         )
         .unwrap();
         std::fs::copy(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/schemas/pack.manifest.schema.json"),
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/schemas/pack.manifest.schema.json"
+            ),
             root.join("schemas/pack.manifest.schema.json"),
         )
         .unwrap();
@@ -340,7 +376,10 @@ mod tests {
             "/shell/../config/app.config.json",
         ] {
             let (status, _, _) = s.serve(p);
-            assert!(status == 400 || status == 404, "{p} must be refused, got {status}");
+            assert!(
+                status == 400 || status == 404,
+                "{p} must be refused, got {status}"
+            );
         }
     }
 
@@ -379,9 +418,15 @@ mod tests {
         // activate() requires a ref; write pointer via activate on the broken ref
         s2.store.activate("demo", "0.3.0").unwrap();
         let (status, _, body) = s2.serve("/");
-        assert_eq!(status, 200, "boots from baseline despite corrupt active ref");
+        assert_eq!(
+            status, 200,
+            "boots from baseline despite corrupt active ref"
+        );
         let html = String::from_utf8(body).unwrap();
-        assert!(html.contains("/packs/demo/0.1.0/"), "baseline version serves");
+        assert!(
+            html.contains("/packs/demo/0.1.0/"),
+            "baseline version serves"
+        );
         drop(dir2);
     }
 }

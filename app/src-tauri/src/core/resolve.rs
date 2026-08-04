@@ -60,7 +60,10 @@ mod tests {
     fn scenario_relative_sibling_resolution() {
         let m = manifest();
         assert_eq!(resolve(&m, "dist/a.js").unwrap().sha256, "a".repeat(64));
-        assert_eq!(resolve(&m, "dist/editor/w.js").unwrap().path, "dist/editor/w.js");
+        assert_eq!(
+            resolve(&m, "dist/editor/w.js").unwrap().path,
+            "dist/editor/w.js"
+        );
     }
 
     #[test]

@@ -3,3 +3,5 @@
 
 pub mod fs_store;
 pub mod serving;
+pub mod tuf_source;
+pub mod updater;
