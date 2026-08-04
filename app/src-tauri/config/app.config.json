@@ -1,0 +1,11 @@
+{
+  "$comment": "Single config source for the pack origin (asset-pack-system). The CSP here is the one the protocol adapter delivers on every HTML response — tauri.conf.json's own csp does NOT reach custom-protocol pages (spike finding, design.md D1). style-src 'unsafe-inline' is required because Monaco injects <style> elements; xkin needs no unsafe-eval.",
+  "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; style-src 'self' 'unsafe-inline'; font-src 'self'; worker-src 'self'; img-src 'self' data:",
+  "packs": [
+    {
+      "pack": "xkin",
+      "id": "pack:assets.xkin",
+      "baseline_version": "0.1.0"
+    }
+  ]
+}
