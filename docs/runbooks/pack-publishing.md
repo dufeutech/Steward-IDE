@@ -33,6 +33,11 @@ repo alone.
 | signed metadata + blobs  | `dufeutech/steward-packs`, branch `main`, under `tuf/` | yes  |
 | deploy key (private half) | secret `PACKS_DEPLOY_KEY` in this repository       | **yes — secret** |
 | online signing key       | secret `PACKPUB_SIGNING_KEY` in this repository    | **yes — secret** |
+| root key                 | operator's password manager                        | **yes — offline, never in CI** |
+
+Publishing only ever uses the online key: `tuftool` signs `snapshot`, `targets` and
+`timestamp` and takes the already-signed root as input. That is what keeps a CI compromise
+recoverable — see [why two keys](tuf-root-ceremony.md#why-two-keys-and-not-one).
 
 ## 1. One-time hosting setup
 
