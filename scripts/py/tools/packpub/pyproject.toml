@@ -1,0 +1,13 @@
+[project]
+name = "packpub"
+version = "0.1.0"
+description = "Asset-pack publisher: manifest generation, baseline regeneration, TUF repository assembly"
+requires-python = ">=3.12"
+dependencies = ["cyclopts>=4.0", "jsonschema>=4.23", "httpx>=0.28"]
+
+[project.scripts]
+packpub = "packpub.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
