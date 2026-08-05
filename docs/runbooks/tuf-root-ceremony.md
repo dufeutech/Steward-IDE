@@ -19,8 +19,8 @@ statements stop being true, the signing model is broken regardless of what the c
 
 ## Prerequisites
 
-`tuftool` on PATH, and a filesystem allowing symlink creation (Linux, macOS, WSL, or a
-container — see `app/src-tauri/tests/fixtures/README.md`).
+`tuftool` on PATH. The ceremony itself needs nothing else — unlike fixture generation, it
+creates no target tree and so needs no symlink support; it runs natively on Windows.
 
 ```bash
 cd scripts/go && go run ./cmd/ensure tuftool
@@ -28,43 +28,50 @@ cd scripts/go && go run ./cmd/ensure tuftool
 
 ## Ceremony
 
-Work in a directory you will delete afterwards.
+One command. It creates the anchor and the signing key, checks the result, and writes
+nothing unless every check passes.
 
 ```bash
-work="$(mktemp -d)"
-root="$work/root.json"
-key="$work/online-key.pem"
-
-tuftool root init "$root"
-
-# Expiry ladder (design P4). Root is the slow-moving anchor; the scheduled refresh
-# workflow keeps timestamp fresh, so root only needs renewing once a year.
-tuftool root expire "$root" "$(date -u -d '+1 year' +%Y-%m-%dT%H:%M:%SZ)"
-
-for role in root snapshot targets timestamp; do
-  tuftool root set-threshold "$root" "$role" 1
-done
-
-# One online key signs every role — the single-key posture recorded in the
-# asset-pack-system design (D4). Splitting roles later needs no client change.
-tuftool root gen-rsa-key "$root" "$key" --role root --role snapshot \
-  --role targets --role timestamp --bits 4096
-
-tuftool root sign "$root" -k "$key"
+cd scripts/py && uv run packpub ceremony
 ```
 
-Then, in order:
+Defaults: the anchor is written to `app/src-tauri/tuf/root.json`, the key to
+`~/packpub-signing-key.pem`, RSA 4096, one year to expiry, threshold 1 on all four roles.
+Override with `--anchor`, `--key-out`, `--bits`, `--root-days`.
+
+The command refuses to run if the anchor already exists (replacing a trust anchor is
+[rotation](#rotation), not a ceremony), and refuses a `--key-out` inside the checkout,
+where one `git add -A` would publish it.
+
+Then, in order — this part is deliberately manual, because custody cannot be automated:
 
 1. **Store the private key** in the operator's password manager, as a file attachment or
-   full text. This is the only copy. Losing it means every installed client must be
-   reinstalled to accept a new anchor.
-2. **Add the CI secret**: repository → Settings → Secrets and variables → Actions → New
-   repository secret, named `PACKPUB_SIGNING_KEY`, containing the full PEM including the
+   full text, and verify you can read it back. This is the only copy. Losing it means
+   every installed client must be reinstalled to accept a new anchor.
+2. **Add the CI secret**, from the path the command printed:
+   ```bash
+   gh secret set PACKPUB_SIGNING_KEY < ~/packpub-signing-key.pem
+   ```
+   Or by hand: repository → Settings → Secrets and variables → Actions → New repository
+   secret, named `PACKPUB_SIGNING_KEY`, containing the full PEM including the
    `-----BEGIN`/`-----END` lines.
-3. **Commit the public anchor**: copy `$root` to `app/src-tauri/tuf/root.json`. It
-   contains only public keys and role definitions — safe to commit, and it must be
-   committed, because it is what ships inside the binary.
-4. **Delete the working directory**: `rm -rf "$work"`.
+3. **Delete the key file**, then **commit the anchor**. It contains only public keys and
+   role definitions — safe to commit, and it must be committed, because it is what ships
+   inside the binary.
+   ```bash
+   rm ~/packpub-signing-key.pem
+   git add app/src-tauri/tuf/root.json
+   ```
+
+## Checking an anchor
+
+```bash
+cd scripts/py && uv run packpub check-anchor
+```
+
+Reports version, expiry, key count, and each role's threshold; exits non-zero if the
+anchor is expired, unsigned, inside the 30-day renewal margin, under-keyed, or references
+a key it does not carry. This is the check behind the calendar reminder below.
 
 ## Rotation
 
@@ -94,5 +101,5 @@ because the old key signed it; fresh installs bootstrap from the embedded copy.
 | root      | 1 year    | **this runbook** — nothing automates it            |
 
 Root expiry is the one date no workflow watches. Put a calendar reminder eleven months
-out when you run the ceremony; an expired root means clients refuse every update until a
-new binary ships.
+out when you run the ceremony, and have it run `packpub check-anchor`; an expired root
+means clients refuse every update until a new binary ships.
