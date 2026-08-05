@@ -5,8 +5,14 @@ sections 2–4 run for every release, and section 5 is the one-time flip that tu
 dormant updater on.
 
 Prerequisite: the [root ceremony](tuf-root-ceremony.md) has been run, so
-`app/src-tauri/tuf/root.json` is committed and `PACKPUB_SIGNING_KEY` exists as a secret.
-Publishing without an anchor signs a repository no client will ever trust.
+`app/src-tauri/tuf/root.json` is committed **and pushed**, and `PACKPUB_SIGNING_KEY`
+exists as a secret. The publish workflow reads the anchor from the commit it runs
+against, so an anchor that only exists locally fails the same way as no anchor at all:
+it signs a repository no client will ever trust.
+
+Commands here are bash. In PowerShell the trailing `\` is not a line continuation — it
+silently truncates the command and you get "required arguments were not provided". Use a
+backtick, or put the command on one line.
 
 ## Why the published tree lives in a different repository
 
@@ -39,15 +45,23 @@ gh repo create dufeutech/steward-packs --public --add-readme \
   --description "Signed TUF repository for Steward IDE asset packs"
 ```
 
-Give the workflow write access to that repository and nothing else:
+Give the workflow write access to that repository and nothing else. Generate the key
+**outside the checkout**: `.gitignore` covers `*.pem`, but an extension-less SSH key
+matches nothing, so a key written into the working tree is one `git add -A` away from
+being committed.
 
 ```bash
-ssh-keygen -t ed25519 -C "steward-packs publish" -f ./packs-deploy -N ""
-gh repo deploy-key add ./packs-deploy.pub --repo dufeutech/steward-packs \
+keydir="$(mktemp -d)"
+ssh-keygen -t ed25519 -C "steward-packs publish" -f "$keydir/packs-deploy" -N ""
+gh repo deploy-key add "$keydir/packs-deploy.pub" --repo dufeutech/steward-packs \
   --title "publish-pack (write)" --allow-write
-gh secret set PACKS_DEPLOY_KEY --repo dufeutech/Steward-IDE < ./packs-deploy
-rm ./packs-deploy ./packs-deploy.pub
+gh secret set PACKS_DEPLOY_KEY --repo dufeutech/Steward-IDE < "$keydir/packs-deploy"
+rm -rf "$keydir"
 ```
+
+The private half now exists only as the `PACKS_DEPLOY_KEY` secret, which is the point:
+nothing on disk to leak, and rotation is deleting the deploy key and repeating these five
+lines.
 
 Turn on Pages, serving the branch root:
 
