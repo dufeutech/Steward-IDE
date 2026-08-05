@@ -128,6 +128,20 @@
       and env files (clean) and confirming no `pull_request_target` trigger could leak
       secrets to fork PRs. Also fixed: publishing runbook §4 named the pack manifest as the
       attested subject; the workflow attests the signed metadata, and the manifest 404s.
-      **The refresh workflow is still UNVERIFIED** — its `--package` fix is the same
-      one-line change proven in the publish path, but it has not run; its first weekly cron
-      or a manual `workflow_dispatch` is what would prove it.
+- [x] 5.7 Freshness workflow verified by dispatching it against the live tree — done now,
+      while the updater is still dormant, so a bad push could not have reached a client.
+      Fixing `--package` exposed two more defects underneath it, neither reachable by
+      inspection. **Three:** `packpub refresh` built a `tuftool update` carrying only the
+      timestamp version and expiry. There is no timestamp-only mode — tuftool requires all
+      three online roles and rejects the command — so the weekly cron could never have
+      succeeded. Now re-signs all three, which also pushes snapshot/targets expiry out on
+      every run so no role can quietly expire between releases. **Four:** the workflow
+      copied `refreshed/*.json`, but tuftool writes into `metadata/` under its outdir, so
+      the glob matched nothing. The publish workflow already had this right.
+      `packpub` gained 6 tests pinning the required-flag set from tuftool's own usage
+      output (18 total, up from 12) — the defect survived review precisely because nothing
+      asserted what we hand to the tool.
+      Verified after the run: metadata advanced to `2.snapshot.json`/`2.targets.json` with
+      a re-signed timestamp, and `tuftool download` against the committed anchor still
+      exits 0 with 102/102 blobs and the manifest present. **Both publisher workflows have
+      now run green end-to-end.**
