@@ -7,9 +7,10 @@ Concrete tool names live here only — `.canon/` and `openspec/specs/` stay abst
 
 ## Change-scoped decisions (live in the change's design.md until archived)
 
-- `asset-pack-system` — 7 ADRs (TUF client `tough`, TUF-native ed25519, `sha2`,
-  `reqwest`, `jsonschema`, registry kind `pack`, GitHub Releases endpoint):
-  [openspec/changes/asset-pack-system/design.md](openspec/changes/asset-pack-system/design.md)
+- `asset-pack-system` (archived 2026-08-04) — 7 ADRs (TUF client `tough`, TUF-native
+  ed25519, `sha2`, `reqwest`, `jsonschema`, registry kind `pack`, GitHub Releases
+  endpoint):
+  [openspec/changes/archive/2026-08-04-asset-pack-system/design.md](openspec/changes/archive/2026-08-04-asset-pack-system/design.md)
 
 ## Decisions
 
