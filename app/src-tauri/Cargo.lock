@@ -3673,6 +3673,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tough",
+ "url",
 ]
 
 [[package]]

@@ -43,6 +43,15 @@ func main() {
 		},
 	})
 
+	root.AddCommand(&cobra.Command{
+		Use:   "tuftool",
+		Short: "Create and sign TUF repositories (github.com/awslabs/tough)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return obtain(cmd, ensure.Tuftool, method, allowRustup, pathOnly)
+		},
+	})
+
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}

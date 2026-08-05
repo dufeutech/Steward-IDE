@@ -1,0 +1,38 @@
+{
+  "signed": {
+    "_type": "targets",
+    "spec_version": "1.0.0",
+    "version": 1,
+    "expires": "2027-02-01T01:20:16Z",
+    "targets": {
+      "fixture.manifest.json": {
+        "length": 495,
+        "hashes": {
+          "sha256": "8d6ff474394027825f18bceb5f51ce1a70e1b8538b31d7eef8a60a618a551fbf"
+        }
+      },
+      "dcf8551a3d94108d32de4b29e5e35f1e00e60fd9361020069261ba1725f7fd7c": {
+        "length": 31,
+        "hashes": {
+          "sha256": "dcf8551a3d94108d32de4b29e5e35f1e00e60fd9361020069261ba1725f7fd7c"
+        }
+      },
+      "143d7f62a6d993bce881a0ff7306f0a41167825ecf4ed487b3eebfb415741e74": {
+        "length": 18,
+        "hashes": {
+          "sha256": "143d7f62a6d993bce881a0ff7306f0a41167825ecf4ed487b3eebfb415741e74"
+        }
+      }
+    },
+    "delegations": {
+      "keys": {},
+      "roles": []
+    }
+  },
+  "signatures": [
+    {
+      "keyid": "3cd966e70342899e018942b6104f9675c116a65cd9f6beaa646c0e619f11eaa2",
+      "sig": "7b8e19812c4b3564e2c9b1c9a45d2d5c12aeb548d81c256cb00ca392375707ed40566c9faebd88f1255ef6b5c12693d0e0e2518e001f49e68b956ebf13904b5f27f47177932f5b58fb02993d2c5fb25d8a6863b76356ba9d63c1f0114f34e2e1912a3009110b5aac1648dfa70e1e50b2fc8b6bebbed1c7cb841724011b776e489c1e16764263b887a9ab539146b752c629dce978836384fbe6af7f487578f8202428a18ce7aad38ff940199763df052f221ca1f72b46899014bd9a656f1459eedaccfd4c0595829fb851d2f2d8769ed44bcbd4c1a4cc281dab3bd47e633b5c034c626934b6211275084ce09f270a078be224c43df1326b1952c20198f5a1af09"
+    }
+  ]
+}

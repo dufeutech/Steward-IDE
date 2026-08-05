@@ -1,0 +1,11 @@
+# Files whose exact bytes matter.
+#
+# Pack manifests are compared byte-for-byte across platforms: the same payload
+# must produce the same manifest on a developer machine and on CI, so they are
+# pinned to LF rather than translated per checkout.
+app/src-tauri/packs-baseline/**/manifest.json text eol=lf
+
+# Signed TUF metadata and the fixture repository are verified against signatures
+# over their bytes. Any line-ending translation invalidates them, so nothing here
+# is treated as text.
+app/src-tauri/tests/fixtures/** -text

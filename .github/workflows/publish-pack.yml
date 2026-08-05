@@ -1,0 +1,107 @@
+# Publishes a signed pack release to the gh-pages branch.
+#
+# What gets published is whatever the committed manifest pins: the payload is
+# fetched from the origin that manifest records and verified against it before
+# anything is signed. Publishing a new pack version therefore means committing an
+# updated manifest first, then running this workflow — the repository stays the
+# source of truth about what is live.
+name: publish-pack
+
+on:
+  workflow_dispatch:
+    inputs:
+      pack:
+        description: Baseline pack directory name (under app/src-tauri/packs-baseline/)
+        required: true
+        default: xkin
+
+permissions:
+  contents: read
+
+env:
+  PACK_DIR: app/src-tauri/packs-baseline/${{ inputs.pack }}
+  # Where the signed repository lives on the published branch.
+  TUF_SUBDIR: tuf
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the signed repository to gh-pages
+      id-token: write # provenance attestation (keyless signing)
+      attestations: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check out the published branch
+        uses: actions/checkout@v5
+        with:
+          ref: gh-pages
+          path: published
+        continue-on-error: true # absent on the very first publish
+
+      - uses: astral-sh/setup-uv@v7
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache tuftool
+        id: tuftool-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/tuftool
+          key: tuftool-${{ runner.os }}-v1
+
+      - name: Install tuftool
+        if: steps.tuftool-cache.outputs.cache-hit != 'true'
+        run: cd scripts/go && go run ./cmd/ensure tuftool --method cargo
+
+      - name: Fetch and verify the pack payload
+        working-directory: scripts/py
+        run: uv run packpub baseline ../../$PACK_DIR
+
+      - name: Decide create-vs-update and the next metadata version
+        id: state
+        run: |
+          metadata="published/$TUF_SUBDIR/metadata"
+          if [ -f "$metadata/timestamp.json" ]; then
+            current=$(jq -r '.signed.version' "$metadata/timestamp.json")
+            echo "metadata_url=file://$(realpath "$metadata")/" >> "$GITHUB_OUTPUT"
+            echo "version=$((current + 1))" >> "$GITHUB_OUTPUT"
+          else
+            echo "metadata_url=" >> "$GITHUB_OUTPUT"
+            echo "version=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Assemble and sign the release
+        working-directory: scripts/py
+        env:
+          PACKPUB_SIGNING_KEY: ${{ secrets.PACKPUB_SIGNING_KEY }}
+        run: |
+          uv run packpub publish \
+            ../../$PACK_DIR/manifest.json \
+            ../../$PACK_DIR \
+            ../../signed \
+            --root-json ../../app/src-tauri/tuf/root.json \
+            --version ${{ steps.state.outputs.version }} \
+            ${{ steps.state.outputs.metadata_url && format('--metadata-url {0}', steps.state.outputs.metadata_url) || '' }}
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: signed/metadata/*.json
+
+      # One commit publishes metadata and targets together, so clients never see a
+      # repository whose metadata and content come from different releases.
+      - name: Publish to gh-pages
+        run: |
+          rm -rf "published/$TUF_SUBDIR"
+          mkdir -p "published/$TUF_SUBDIR"
+          cp -r signed/* "published/$TUF_SUBDIR/"
+          cd published
+          git init -q 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "publish ${{ inputs.pack }} (metadata v${{ steps.state.outputs.version }})" || {
+            echo "nothing to publish"; exit 0;
+          }
+          git push origin HEAD:gh-pages

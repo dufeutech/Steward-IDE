@@ -42,11 +42,12 @@ uv run scripts/py/lab/<name>.py              # inline deps, ephemeral env, no lo
 
 ## What's here now
 
-| Tool                    | Language | Job                                                    |
-| ----------------------- | -------- | ------------------------------------------------------ |
-| `go/cmd/ensure`         | Go       | Install an adopted third-party CLI (currently `tokei`) |
-| `py/tools/mdlinks`      | Python   | Find broken relative links in Markdown                 |
-| `sh/format_markdown.sh` | sh       | Prettier over all Markdown — port candidate            |
+| Tool                    | Language | Job                                                             |
+| ----------------------- | -------- | --------------------------------------------------------------- |
+| `go/cmd/ensure`         | Go       | Install an adopted third-party CLI (`tokei`, `tuftool`)         |
+| `py/tools/mdlinks`      | Python   | Find broken relative links in Markdown                          |
+| `py/tools/packpub`      | Python   | Publish asset packs: manifests, baseline regen, signed releases |
+| `sh/format_markdown.sh` | sh       | Prettier over all Markdown — port candidate                     |
 
 ## Adopted tools
 
@@ -57,6 +58,17 @@ Not everything in the workshop is written here. Counting lines of code is
 cd scripts/go && go run ./cmd/ensure tokei   # installs it if missing
 tokei . --files --sort lines                 # the file-size review in .canon/checks.md
 ```
+
+TUF repository signing is [tuftool](https://github.com/awslabs/tough), the CLI sibling of
+the `tough` client the app ships — `packpub` drives it, never reimplements it:
+
+```bash
+cd scripts/go && go run ./cmd/ensure tuftool
+```
+
+It builds from source only, and its `aws-lc-sys` dependency needs `cmake` and `nasm` on
+PATH. On Windows without an elevated shell, `scoop install cmake nasm` installs both
+user-scope.
 
 Before building any tool, check whether a mature one already exists — `/ai:tool` makes that a
 hard gate, and `cmd/ensure` is where an adopted tool gets wired in so it is always available.

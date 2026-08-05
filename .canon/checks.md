@@ -12,7 +12,7 @@ moment you first discover the real command, so the next session doesn't rediscov
 | Linter            | `cd scripts/go && go vet ./...` · `cd app/src-tauri && cargo clippy -- -D warnings` | Go + Rust                                    |
 | Type checker      | —                                                      | Rust: covered by build; no TS toolchain yet                               |
 | Unit tests        | `cd app/src-tauri && cargo test`                       | Rust app (spec scenarios as tests)                                        |
-| Integration tests | —                                                      | not yet defined (TUF end-to-end pending publisher tooling)                |
+| Integration tests | `cd app/src-tauri && cargo test --test tuf_end_to_end`  | TUF end-to-end against the committed signed fixture (no network, no secrets) |
 | Build             | `cd scripts/go && go build -o bin/ ./...` · `cd app/src-tauri && cargo build` | Go workspace + Rust app                            |
 | Doc links         | `cd scripts/py && uv run --package mdlinks mdlinks ../..` | Fails non-zero on any broken relative Markdown link (Rule 8). `--package` is required on a fresh venv |
 | File-size review  | `tokei . --files --sort lines`                         | Any language, largest first, against the thresholds in `.canon/guidelines.md`. Missing? `cd scripts/go && go run ./cmd/ensure tokei` |

@@ -62,6 +62,20 @@ var Tokei = Tool{
 	Hint: "tokei is also packaged for Arch, Nix, and Alpine — check your distro before falling back to cargo",
 }
 
+// Tuftool creates and signs TUF repositories. It is the CLI sibling of the
+// `tough` client the app ships, which is why it is adopted rather than scripted
+// around a second TUF implementation.
+//
+// No package manager carries it and it publishes no release binaries, so cargo
+// is the only route. Its build needs cmake and nasm on PATH (aws-lc-sys); the
+// hint says so, because that failure otherwise reads as a Rust problem.
+var Tuftool = Tool{
+	Name:  "tuftool",
+	Crate: "tuftool",
+	Hint: "tuftool builds from source only. Its aws-lc-sys dependency needs cmake and nasm on PATH " +
+		"(winget install Kitware.CMake NASM.NASM, from an elevated terminal on Windows)",
+}
+
 // ErrNotObtained means every permitted strategy failed.
 var ErrNotObtained = errors.New("could not obtain tool")
 
