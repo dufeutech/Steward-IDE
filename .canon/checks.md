@@ -8,13 +8,13 @@ moment you first discover the real command, so the next session doesn't rediscov
 
 | Check             | Command                                                | Status                                                                    |
 | ----------------- | ------------------------------------------------------ | ------------------------------------------------------------------------- |
-| Formatter         | `sh scripts/sh/format_markdown.sh`                     | Markdown only — add the code formatter                                    |
-| Linter            | `cd scripts/go && go vet ./...`                        | Go workspace only                                                         |
-| Type checker      | —                                                      | not yet defined                                                           |
-| Unit tests        | —                                                      | not yet defined                                                           |
-| Integration tests | —                                                      | not yet defined                                                           |
-| Build             | `cd scripts/go && go build -o bin/ ./...`              | Go workspace only                                                         |
-| Doc links         | `cd scripts/py && uv run mdlinks ../..`                | Fails non-zero on any broken relative Markdown link (Rule 8)              |
+| Formatter         | `sh scripts/sh/format_markdown.sh` · `cd app/src-tauri && cargo fmt --check` | Markdown + Rust                                     |
+| Linter            | `cd scripts/go && go vet ./...` · `cd app/src-tauri && cargo clippy -- -D warnings` | Go + Rust                                    |
+| Type checker      | —                                                      | Rust: covered by build; no TS toolchain yet                               |
+| Unit tests        | `cd app/src-tauri && cargo test`                       | Rust app (spec scenarios as tests)                                        |
+| Integration tests | —                                                      | not yet defined (TUF end-to-end pending publisher tooling)                |
+| Build             | `cd scripts/go && go build -o bin/ ./...` · `cd app/src-tauri && cargo build` | Go workspace + Rust app                            |
+| Doc links         | `cd scripts/py && uv run --package mdlinks mdlinks ../..` | Fails non-zero on any broken relative Markdown link (Rule 8). `--package` is required on a fresh venv |
 | File-size review  | `tokei . --files --sort lines`                         | Any language, largest first, against the thresholds in `.canon/guidelines.md`. Missing? `cd scripts/go && go run ./cmd/ensure tokei` |
 
 A row marked "not yet defined" is a real answer: that check is **unverified** and Rule 6 says

@@ -1,0 +1,20 @@
+{
+  "$comment": "Extension → media type for the pack origin. Unknown extensions serve as application/octet-stream (spec asset-serving: unknown asset type served unchanged).",
+  "html": "text/html",
+  "js": "text/javascript",
+  "mjs": "text/javascript",
+  "css": "text/css",
+  "json": "application/json",
+  "map": "application/json",
+  "svg": "image/svg+xml",
+  "png": "image/png",
+  "ico": "image/x-icon",
+  "ttf": "font/ttf",
+  "woff": "font/woff",
+  "woff2": "font/woff2",
+  "wasm": "application/wasm",
+  "txt": "text/plain",
+  "md": "text/plain",
+  "d.ts": "text/plain",
+  "ts": "text/plain"
+}

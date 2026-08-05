@@ -1,0 +1,523 @@
+{
+  "format_version": 1,
+  "id": "pack:assets.xkin",
+  "version": "0.1.0",
+  "files": [
+    {
+      "path": "dist/editor/1026.e7f48667500599ab6343.js",
+      "size": 7295,
+      "sha256": "420bb74668636c422235b3e905b08137bc4e56581d388913dcfafa6aaec101e2"
+    },
+    {
+      "path": "dist/editor/1034.73fb1516074ca55ce8ab.js",
+      "size": 2477,
+      "sha256": "2d3cfb1907cc44096f11f2419d39ba64e799c881e10c0b15c48da826249160b6"
+    },
+    {
+      "path": "dist/editor/1322.1ac4503d8fc1d10705cb.js",
+      "size": 4889,
+      "sha256": "e5181b0e00ce0b21ec58ce59c131feb23dd6f364218818c59080ac52cbcebcb1"
+    },
+    {
+      "path": "dist/editor/1326.160282856e57899bc76b.js",
+      "size": 10274,
+      "sha256": "8fa77cfb134b5381794c3e32cf6a214cf11514c6e92ba95aacd849a81d3bfbaf"
+    },
+    {
+      "path": "dist/editor/1462.82134cacb132b85e19b7.js",
+      "size": 3166,
+      "sha256": "ae8379e4d4ffbf4175102baaf84797878bc03881a21f2228be50563a44ddffd3"
+    },
+    {
+      "path": "dist/editor/1714.97d146f0c0c68b0bf891.js",
+      "size": 5676,
+      "sha256": "51ffac232a2f937c9391f0f453fccbcc1cb87755d27cdedb79accbe5bf5630cb"
+    },
+    {
+      "path": "dist/editor/176.a3115bfb35ecd1c11515.js",
+      "size": 2971,
+      "sha256": "fc011cc708420360d20295544ec8a883846c3d03c5da02e53bcafb577f30db6b"
+    },
+    {
+      "path": "dist/editor/1874.bafc02fe9ce102112d6f.js",
+      "size": 7375,
+      "sha256": "d48fb33fc2a6d277c45e624fc75211efe97c497d169451f2601f602e73c9d37c"
+    },
+    {
+      "path": "dist/editor/1882.0e9e1b9dc4b4a3e71972.js",
+      "size": 1660,
+      "sha256": "b150dfda8e2205c1358dbd7868f1fcbea4cd59113bfc9d1ba7e4dc65d91841eb"
+    },
+    {
+      "path": "dist/editor/1922.8dc66386854ce9d5a83c.js",
+      "size": 11777,
+      "sha256": "5eb73d91f6b69a814e45b9eff9d4369f2bc87f6dd29e2e3c3627ae839ad4871a"
+    },
+    {
+      "path": "dist/editor/2038.129ece932bc0d4e5da97.js",
+      "size": 7126,
+      "sha256": "c0a06cfa399bbf238e122f0dec302afc078bd30667d764adfbfaea948c00eceb"
+    },
+    {
+      "path": "dist/editor/2066.44389724713406a566de.js",
+      "size": 16368,
+      "sha256": "bf1559b4bb49bf933ee2da15e58726681eec4ddce45de1be904b5cbc022925e7"
+    },
+    {
+      "path": "dist/editor/2482.1d8d2ce8e044dc00c7c4.js",
+      "size": 2556,
+      "sha256": "821f0f9e9dbba93d0493106bc29b0633f9dc89de90661efa1ea31b71a29150b5"
+    },
+    {
+      "path": "dist/editor/2596.fe3b86b7e27d9f045d28.js",
+      "size": 6389,
+      "sha256": "3d55c21556ce1de0a227fe58b46767b6c8da9bdc9c44ec7d30b591a246dfa947"
+    },
+    {
+      "path": "dist/editor/2641.2a5cf889cb02a9ac0e70.js",
+      "size": 33061,
+      "sha256": "730f86a0975382f912b61b84ebfd841b42df6a3a9860bca017f8b457d896a22c"
+    },
+    {
+      "path": "dist/editor/266.e7973c9435e573e5d0b3.js",
+      "size": 4226,
+      "sha256": "e6b40e31291897dbab557b940b45249e446d8a3a946eaa3b6158e52aec705a22"
+    },
+    {
+      "path": "dist/editor/2702.2b991a5981a6c1c3dba9.js",
+      "size": 2414,
+      "sha256": "98ff9dd494fc903e663d9803c42f8b94a18ef83156b8c3149d3da5cc8a2000ca"
+    },
+    {
+      "path": "dist/editor/2718.d4d09dfffe19df34a2b5.js",
+      "size": 3246,
+      "sha256": "4dda2343b635b0672fb800a91854f2c0bc96275070e84fbb8fbbbbab9f2cfe6b"
+    },
+    {
+      "path": "dist/editor/2850.3dfeb9f2d5662ec5cdeb.js",
+      "size": 8232,
+      "sha256": "aebe2a29e37a38e7bfd26af92e44b8e74bc9151fc91c46359d56121a844c5988"
+    },
+    {
+      "path": "dist/editor/304.9e71f53cac17e0629312.js",
+      "size": 4460,
+      "sha256": "8984e8d89426ccb335ffae3d8d5074ba62aab0e8c5e313478ced9fb03a8a8344"
+    },
+    {
+      "path": "dist/editor/3058.6382f550a63395d5466b.js",
+      "size": 6526,
+      "sha256": "eaa395a7da629474fbc432f1c4f16572c147badc80195a4be9197c78c851b522"
+    },
+    {
+      "path": "dist/editor/3082.4fc2bbded055f6894ed7.js",
+      "size": 3377,
+      "sha256": "5c56499d55952a15a2d366d12ba17d6b5bbb2ceccb2a1e86b95c2975ca90a34a"
+    },
+    {
+      "path": "dist/editor/3242.15c2ae01040c2e53ed52.js",
+      "size": 8395,
+      "sha256": "c842557ae6590bf1210c5d6571847f24d6e53758c1af42d14c9eec0360dd041a"
+    },
+    {
+      "path": "dist/editor/3378.e96c9c028dded1c13630.js",
+      "size": 4501,
+      "sha256": "63c74fe66f771f264b27cad437e10a6e9ed3d1e9bf73dc98ac78e8a8e8cb15fc"
+    },
+    {
+      "path": "dist/editor/3552.6483052e89a69ec68788.js",
+      "size": 14140,
+      "sha256": "d32474e6d37926b4998c17752d7edf3f75ba37c84146e64364f1bac2225c88ef"
+    },
+    {
+      "path": "dist/editor/3558.33648f512c7bee0269ac.js",
+      "size": 5277,
+      "sha256": "8ce3bb2b30d544358ff861ecaf63366540f391b1cc4f5fce4e5702aaa104885e"
+    },
+    {
+      "path": "dist/editor/3602.56e0fc86ae250a48d359.js",
+      "size": 2688,
+      "sha256": "99a55a37bc68212c119530d985860a53d0256b4f8b53b40474c752d905eda27c"
+    },
+    {
+      "path": "dist/editor/3740.0434d9e6f82b61f1ace8.js",
+      "size": 4235,
+      "sha256": "ee4840010bf7e2e7006d8190221b7f44a4831e7e6f59d4347241c4d760d63601"
+    },
+    {
+      "path": "dist/editor/3852.ded1aa9f9afe18b1a85e.js",
+      "size": 4137,
+      "sha256": "e77a511f3351a2e59067f13108e53c292e077dea8c72590638c1d3a732aca071"
+    },
+    {
+      "path": "dist/editor/3948.c7672d8e6a83a0524d1e.js",
+      "size": 3567,
+      "sha256": "89174e142e431109399dafef0bfd54c06484c826b493c5c759a672612ed16fca"
+    },
+    {
+      "path": "dist/editor/4214.a8ab8908d0bc79ede379.js",
+      "size": 9059,
+      "sha256": "b25487fd6b05d6d892f3146d81e667631f3eaeb67acec56d25945b523c80d8c2"
+    },
+    {
+      "path": "dist/editor/4221.c68633ef625f299878c3.js",
+      "size": 1061792,
+      "sha256": "0c2f7c8361ebaf58fc972fdfc95bff999e0b0443574ed0fee576bbe9fdf6b9b2"
+    },
+    {
+      "path": "dist/editor/4362.747c8bc1219d82a82ac8.js",
+      "size": 825,
+      "sha256": "2d87d658da80421d3a37c337ee5e91eacf639193c17eb8a607008038a6114997"
+    },
+    {
+      "path": "dist/editor/4546.8ac8afbb208d3b5cdcf2.js",
+      "size": 7580,
+      "sha256": "fa2f9d954c11a6b239bb95e29c480d768d3e538382fac99b90cd7bdf6a5f4dbf"
+    },
+    {
+      "path": "dist/editor/4706.bbb892a639b55e8dfb13.js",
+      "size": 1078,
+      "sha256": "02e8aec11eab064c52855cdd925cdc8b9ce3d1da2f54606049bcba567c38f359"
+    },
+    {
+      "path": "dist/editor/4895.3d08b48bd2589f77c592.js",
+      "size": 32504,
+      "sha256": "1ba7b0d316053b69eb09dbb06165bc5aec98f434870b8d89b357a531b48ef492"
+    },
+    {
+      "path": "dist/editor/4922.2de94d0ce0dfb3cf207e.js",
+      "size": 7832,
+      "sha256": "435612d0201bf04485af8b3a514d62d49396ccfd0fbe1fe04d567cc5e988513c"
+    },
+    {
+      "path": "dist/editor/4950.a4e7548e2e89951441be.js",
+      "size": 3876,
+      "sha256": "42e1fea8bbb218fef23c13037b90bef68bfe41ea18fcc377428333751b31927f"
+    },
+    {
+      "path": "dist/editor/5026.93caae6c046d7ec679d3.js",
+      "size": 1787,
+      "sha256": "23ad9ec1e9f2f367b1090fa9dd636d76e0bc27be0231135c0a46e9ab60795f04"
+    },
+    {
+      "path": "dist/editor/5116.ce3ec98be69a187e493c.js",
+      "size": 2794,
+      "sha256": "717e3d972796aff2ac3559235698cf3edbec6d6cca6aa21bf86f7bf8f6328134"
+    },
+    {
+      "path": "dist/editor/5314.615c859786c9a2a2f90a.js",
+      "size": 2739,
+      "sha256": "c1f0e015336edf2ed75fd70ebe7b35382ea7ce90037e95f0ffe947ddb0d36589"
+    },
+    {
+      "path": "dist/editor/5334.5314d8edd1a11808fadf.js",
+      "size": 2529,
+      "sha256": "2b99a0730582392615dd335dae3490dd5480148647c1d4bdaae3432d50327c61"
+    },
+    {
+      "path": "dist/editor/5352.70e1e3dc0bb847c518ad.js",
+      "size": 2960,
+      "sha256": "aaf2a409768efd90a9fc7c990e667bf7150062bc87d2cd156ef56457b2cb206e"
+    },
+    {
+      "path": "dist/editor/5512.326f5099878260cf4124.js",
+      "size": 2634,
+      "sha256": "93e4f9785e19de4ca9b5969263f3bc810ba4a830cb4fb1597707d219c262002a"
+    },
+    {
+      "path": "dist/editor/5521.935d3ecad84d6d9ca2fe.js",
+      "size": 413061,
+      "sha256": "daae0617a6a22a6daf4f3c1b788d15ca6a3ec7a062f942d5decf173689ca94e0"
+    },
+    {
+      "path": "dist/editor/5762.7e6535eec24fef6b6c3d.js",
+      "size": 3881,
+      "sha256": "8aae2abf4ffe81401d2a687e241ae2f39db890826925a3333b0c7b1392a3dd78"
+    },
+    {
+      "path": "dist/editor/5784.553522d0944c6e78d9ad.js",
+      "size": 1846,
+      "sha256": "8c4b4da27c3cd4b64147b4b0f5098ecc9e7e13b049acd4fdecdfe94e9b9fd3a2"
+    },
+    {
+      "path": "dist/editor/5794.192a47f38623c1770373.js",
+      "size": 3783,
+      "sha256": "f9bdde61c6e4f91e616d7e38acf8c008bb3c7a71e97039265c9841c2e8213cfc"
+    },
+    {
+      "path": "dist/editor/5886.25a7e570f6bc7c8cd830.js",
+      "size": 3049,
+      "sha256": "2da0c8bddb893dc06e9463d78b4b64d32a1c8871e22e30b4be463f2dd430cb1b"
+    },
+    {
+      "path": "dist/editor/5902.fa27a03e476012ffce54.js",
+      "size": 3108,
+      "sha256": "f4764ceaedc8ab40a0c1fa12be4c4bdefd158a3a236dfdf937c4a41ac3134b25"
+    },
+    {
+      "path": "dist/editor/5908.bd127155f0ef7785c0e8.js",
+      "size": 3198,
+      "sha256": "8e0d11493da861a5c21e27f71266e4db4303349a3dda394524966f8c8e9f3480"
+    },
+    {
+      "path": "dist/editor/594.26e2906afa8766c5aea3.js",
+      "size": 3547,
+      "sha256": "ede230cd46f458263b43d8c36ab357823f5a3410a11e8acf0d8bcd0fad0260dd"
+    },
+    {
+      "path": "dist/editor/626.c1198e28fb049be3d6de.js",
+      "size": 3364,
+      "sha256": "b80ff04158a58d744db78fcab2a7572a52156be9178ec90399724b8b3d614080"
+    },
+    {
+      "path": "dist/editor/6302.8b2760f1436e12b9c6ca.js",
+      "size": 5956,
+      "sha256": "09f1c7fa10a6e57426c714d2e1914deb28b9f9287d52b4c5a8e4c9e1f2b59d9a"
+    },
+    {
+      "path": "dist/editor/6432.f56411f5a3ced05b69e0.js",
+      "size": 7049,
+      "sha256": "0482d1a979a467103e05bf61dc68928178c5d400503f2edd3e3db01a28f775f4"
+    },
+    {
+      "path": "dist/editor/6482.673222eba6958a11377d.js",
+      "size": 4276,
+      "sha256": "1437dd3479b48f2195569f2b9f858c928d57cdc5afc07498cbf2b5fd0dfaa0f2"
+    },
+    {
+      "path": "dist/editor/6642.a951a661d61c99911fdd.js",
+      "size": 2162,
+      "sha256": "c43bea6954aaf181c43c163d40c04151662d6e61fb6d560db46aed336d31452c"
+    },
+    {
+      "path": "dist/editor/6841.7ed20f35659f130f15e4.js",
+      "size": 7008284,
+      "sha256": "a6eb6b2986e1ba2e5ba2a20c9d32803e89009f4ea32b2f5c7103899d2824a186"
+    },
+    {
+      "path": "dist/editor/7066.da9a106bc70785458715.js",
+      "size": 1821,
+      "sha256": "38e71731b28eacf2f9653c2d74e0e162a089aa602f73920c22d42f6af14fcb81"
+    },
+    {
+      "path": "dist/editor/7081.0c8c08b56f01f27c84a5.js",
+      "size": 723313,
+      "sha256": "aab0c0b716b689955b9c2dc5bdca29bfd274e721903b4a2223068654c4535f6e"
+    },
+    {
+      "path": "dist/editor/7257.228da56b2f1a707e576b.js",
+      "size": 41753,
+      "sha256": "3a1259d860bf6ae138bf49c8d04236837e0904022aa7d063afbb6f31c71d82e6"
+    },
+    {
+      "path": "dist/editor/7270.4d235b60da64ffab83b8.js",
+      "size": 5307,
+      "sha256": "5a2dedca5d713703d67f53c89e296f42fd5cafc3b6dce0877d7842f0d055d6d3"
+    },
+    {
+      "path": "dist/editor/732.336cb81029153e6d2f72.js",
+      "size": 3928,
+      "sha256": "e5932a28db3958a697f3ad5f17f97b0fc67b7745a8915a82f78d4a24147373fe"
+    },
+    {
+      "path": "dist/editor/738.40366573d28c47baebd4.js",
+      "size": 8003,
+      "sha256": "f3bd7338bf50e13d44717d92a285d447f5ac52a012ceffee3c693fc2779f8971"
+    },
+    {
+      "path": "dist/editor/7426.7fad7a92cf447c68c4f1.js",
+      "size": 10234,
+      "sha256": "7d7af6849b6eb297c35ff0e1dd9c1d467f89d6494f6887fd991a61888ace55d1"
+    },
+    {
+      "path": "dist/editor/7509.40f45ead9a5cf71677c7.js",
+      "size": 16916,
+      "sha256": "c53eece85fdb20b35495b197e8ad4c728c1816accf15ebff8d68da6c06385943"
+    },
+    {
+      "path": "dist/editor/7578.9e338efdaacb3cea1801.js",
+      "size": 5319,
+      "sha256": "1e3c9eb14d92937930b76c99c1f11bbf34ed01fd7932131ba6aa8c3a72990073"
+    },
+    {
+      "path": "dist/editor/7638.56b4ff23daabdd7ed4d7.js",
+      "size": 18574,
+      "sha256": "16a80d2740477d6e3bfd60bc0b0b70026ae64084eaa39ccf4536e68873f10fff"
+    },
+    {
+      "path": "dist/editor/7650.230b5e3794bfe850db07.js",
+      "size": 5133,
+      "sha256": "40cdf497f3be41a63792ac53c52495c952468c230824df105ac1645e4d58bfdf"
+    },
+    {
+      "path": "dist/editor/7718.b16b5f90a573fb5bb0f8.js",
+      "size": 2100,
+      "sha256": "c7af45f4d5b760ef4a3a870f4b06e3df0c1e9ebe57897c8e8eefc8b24d8f2bdb"
+    },
+    {
+      "path": "dist/editor/7746.f63b7e668882fdfcab01.js",
+      "size": 3567,
+      "sha256": "708bfe345e316b0e0a405da071609028f92b91013591c976b7c61af539823b18"
+    },
+    {
+      "path": "dist/editor/7762.15a22e6c14bac333a2a0.js",
+      "size": 3533,
+      "sha256": "bac7d383e25afa2a744f082f2adc7dfb629eef06b408219bc427cae77c965d0f"
+    },
+    {
+      "path": "dist/editor/8210.cef2819c30ed3037ebe0.js",
+      "size": 9620,
+      "sha256": "d17cf762fcca825bf73e06a50c1b9f6572e4996151b8d76e2505833a7e6ce50a"
+    },
+    {
+      "path": "dist/editor/8386.e137a98f19c2cee71276.js",
+      "size": 23312,
+      "sha256": "d877fb353d94f5a76a608febb86a13283c1ed5bd2e17be44d070d45e73ccc9e2"
+    },
+    {
+      "path": "dist/editor/8656.e1f14c0c1fc8d60ee120.js",
+      "size": 2741,
+      "sha256": "54bfe8cc3b358c1eafd1d844801365e7aa54c0493973d281e13e11638210db64"
+    },
+    {
+      "path": "dist/editor/8706.68ff8d5005ad5e77ea97.js",
+      "size": 1744,
+      "sha256": "4dfd8fe56ff01945c54f4047478ee00710f93da5009a718eb492fd56adc508b1"
+    },
+    {
+      "path": "dist/editor/8830.ab5e7a45d639ed698e8e.js",
+      "size": 4805,
+      "sha256": "2eb412a34abb059dae0f395bc923baa231aa93b78402518deea4ae737d12ea3a"
+    },
+    {
+      "path": "dist/editor/90.a3d86a4ef27d1d1e4a3a.js",
+      "size": 1394,
+      "sha256": "ab9c105333fa729ba69c3efd524270a28112a31ff1902490c5b16548e0ebeb09"
+    },
+    {
+      "path": "dist/editor/9134.f2a99bd907770d8fca8e.js",
+      "size": 11251,
+      "sha256": "2b06eeafb7ea9957e4fe4750ad46a59e7c0cb5d11e0f3b42bef20809530819b8"
+    },
+    {
+      "path": "dist/editor/9282.c81cfbaebd689ea57687.js",
+      "size": 4490,
+      "sha256": "66c43dd41b31a059f2be970298b92444b83f87d872b7927dbbd3e7d4eb3f313a"
+    },
+    {
+      "path": "dist/editor/9333.1813832bb270c1317d02.js",
+      "size": 2379,
+      "sha256": "83bb05f0b841b4783ac81810de6ea1b5b58eadc17791ecd28b7dbbd461afc516"
+    },
+    {
+      "path": "dist/editor/9382.cf505e7c0465303ebd1c.js",
+      "size": 1806,
+      "sha256": "f1c7c0ae4fed6961223a89bfb736dd92c80db051b9123d841fd84b7b1095afb1"
+    },
+    {
+      "path": "dist/editor/9420.4223d67826c30da8fbd8.js",
+      "size": 8482,
+      "sha256": "0385345818dd5b4d3c213abec4c4241eb737ead1d15711640d81525c14128427"
+    },
+    {
+      "path": "dist/editor/9426.b7d096f2dff6958fd976.js",
+      "size": 9020,
+      "sha256": "b327f8d3c65ebe1fef4b32e7cc34f7d77b9894da3d6f68b6e5fb5c3091d008ac"
+    },
+    {
+      "path": "dist/editor/9728.e06805b05d061b4bcb66.js",
+      "size": 5768,
+      "sha256": "7812eee02b9ff04160300c1d01d6a840d292e1d5af03af660fa1ce775883fdb0"
+    },
+    {
+      "path": "dist/editor/9802.9331b18eaed179bf42e5.js",
+      "size": 2237,
+      "sha256": "4dab44782703a38b8c08265944d1944f07b3c1d0f7e3a0f4c317420e413d1305"
+    },
+    {
+      "path": "dist/editor/9890.c018036d60bc6d195506.js",
+      "size": 13440,
+      "sha256": "fe58b5f8c0b5059fc7196fc45483dcb47da04b7b73cd8a18ebaa08881bca9344"
+    },
+    {
+      "path": "dist/editor/9914.448182ba74f7dc0027c0.js",
+      "size": 1977,
+      "sha256": "2029972636723da864ba90342c81d3c19d78a4b2aec66998c2e6c01e26e6775a"
+    },
+    {
+      "path": "dist/editor/9998.df527aea67d5e0c3b798.js",
+      "size": 4889,
+      "sha256": "c5d22ed29715b3896119e7a19095f97d97d99e51057baab37321f9b1e5e85c22"
+    },
+    {
+      "path": "dist/editor/codicon.ttf",
+      "size": 121972,
+      "sha256": "9d25513c861704be650eacef8c4588aceabdc8b668857747b5e42b299e926918"
+    },
+    {
+      "path": "dist/editor/monaco.css.f12a6f176a2b6f885e5bd3fc52660429.worker.js",
+      "size": 1061755,
+      "sha256": "d875f37e8a0f49db7bf8619c4c4315259a806c2f9675702b59870de7f77122e5"
+    },
+    {
+      "path": "dist/editor/monaco.editor.4a969118c2644b896ae53134867ba18a.worker.js",
+      "size": 282703,
+      "sha256": "b3befa191cb251ee3c7e7d47e351f7bc0f70d91a4e9ca2a34936873316877480"
+    },
+    {
+      "path": "dist/editor/monaco.html.07c9d1422d827c33b5bc7f97765d539a.worker.js",
+      "size": 723276,
+      "sha256": "798cb5c79628f7dc2c767033d73971355f6828bbdf5a4d46b2f789754ac019ac"
+    },
+    {
+      "path": "dist/editor/monaco.json.73dacebc27f8dfd8ba7ce04a3696c315.worker.js",
+      "size": 413024,
+      "sha256": "397949e7d0a3c62689a908759591f259e9980daa292595b675523ae3b724ecae"
+    },
+    {
+      "path": "dist/editor/monaco.ts.8aefa889f8b1d252475bb1aa44508c13.worker.js",
+      "size": 7008247,
+      "sha256": "d44d165ceac1984b534e90d4ee3c7483c7ed25fdaee09efee952a454a99cff65"
+    },
+    {
+      "path": "dist/xkin.d.ts",
+      "size": 5621,
+      "sha256": "3dbf481a278d2daba6ecef39a9520405db380da59c652cb729145367373afe81"
+    },
+    {
+      "path": "dist/xkin.editor.min.js",
+      "size": 4156857,
+      "sha256": "0adb870df4d35ad52dd5726d46b56513ffc7d8744c26915b4af4d04921f50367"
+    },
+    {
+      "path": "dist/xkin.engine.min.js",
+      "size": 17301,
+      "sha256": "4f4c20b87c0fb2f1e9c78206be0a3b32bbe2e58c2f1dd30136ea98a575e0a2cf"
+    },
+    {
+      "path": "dist/xkin.min.js",
+      "size": 9619,
+      "sha256": "18bde1553cdabc0749390fa56c03034d831f4bc15df3eee0f34d3654e825f3fc"
+    },
+    {
+      "path": "dist/xkin.styles.min.js",
+      "size": 4629297,
+      "sha256": "bff537d0863aa7f402eabd9f8cd2c072c4ab0f758ddd3124bc791c1eabc0ce28"
+    },
+    {
+      "path": "dist/xkin.tools.min.js",
+      "size": 5699442,
+      "sha256": "b463e249bf8e6f9633568fe381713727e5f51a01fd2c6af63e490e8b1b6f9219"
+    }
+  ],
+  "entry": {
+    "scripts": [
+      "dist/xkin.editor.min.js",
+      "dist/xkin.tools.min.js",
+      "dist/xkin.styles.min.js",
+      "dist/xkin.engine.min.js",
+      "dist/xkin.min.js"
+    ],
+    "styles": []
+  },
+  "purl": "pkg:npm/%40dufeut/xkin@0.1.0"
+}

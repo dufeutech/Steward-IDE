@@ -1,0 +1,52 @@
+# AsyncAPI description of the assets context's domain events (Rule 9/10/11; ADR D7).
+# Emitted on the app's in-process event bus; names are Rule 11 registry identifiers.
+asyncapi: 3.0.0
+info:
+  title: Steward IDE — assets context events
+  version: 0.1.0
+  description: >
+    Immutable facts about asset-pack lifecycle. Consumers observe activation and
+    rollback without coupling to the pack store's internals.
+
+channels:
+  pack_activated:
+    address: "event:assets.pack_activated"
+    messages:
+      packActivated:
+        $ref: "#/components/messages/packLifecycle"
+  pack_rolled_back:
+    address: "event:assets.pack_rolled_back"
+    messages:
+      packRolledBack:
+        $ref: "#/components/messages/packLifecycle"
+
+operations:
+  onPackActivated:
+    action: receive
+    channel:
+      $ref: "#/channels/pack_activated"
+  onPackRolledBack:
+    action: receive
+    channel:
+      $ref: "#/channels/pack_rolled_back"
+
+components:
+  messages:
+    packLifecycle:
+      name: packLifecycle
+      title: Pack lifecycle fact
+      payload:
+        type: object
+        required: [pack, id, version]
+        additionalProperties: false
+        properties:
+          pack:
+            type: string
+            description: Store key and URL segment (e.g. "xkin").
+          id:
+            type: string
+            pattern: "^pack:[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+            description: Registry identifier (Rule 11).
+          version:
+            type: string
+            description: SemVer of the version this fact concerns (for rollback, the restored version).
