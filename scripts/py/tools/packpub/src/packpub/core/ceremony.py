@@ -27,14 +27,30 @@ ROLES: tuple[str, ...] = ("root", "snapshot", "targets", "timestamp")
 RENEW_MARGIN_DAYS = 30
 
 
+def _parse_expiry(raw: str) -> datetime | None:
+    try:
+        parsed = datetime.strptime(raw, "%Y-%m-%dT%H:%M:%SZ")
+    except (TypeError, ValueError):
+        return None
+    return parsed.replace(tzinfo=timezone.utc)
+
+
 @dataclass(frozen=True)
 class CeremonyPlan:
-    """What the anchor must contain when the ceremony finishes."""
+    """What the anchor must contain when the ceremony finishes.
+
+    Expiry is expressed either as a horizon (`root_days`, what an operator
+    wants) or as a fixed instant (`expires`, what a committed test fixture
+    wants so that time passing cannot start failing tests). Setting `expires`
+    overrides the horizon; whichever is used, the signed result is checked
+    against the clock by `inspect_anchor`.
+    """
 
     roles: tuple[str, ...] = ROLES
     threshold: int = 1
     root_days: int = 365
     bits: int = 4096
+    expires: str | None = None
 
     def __post_init__(self) -> None:
         if not self.roles:
@@ -43,7 +59,13 @@ class CeremonyPlan:
             raise PackError(f"threshold must be at least 1, got {self.threshold}")
         if self.bits < 2048:
             raise PackError(f"RSA keys below 2048 bits are not acceptable, got {self.bits}")
-        if self.root_days <= RENEW_MARGIN_DAYS:
+        if self.expires is not None:
+            if _parse_expiry(self.expires) is None:
+                raise PackError(
+                    f"expiry {self.expires!r} is not an RFC 3339 instant "
+                    "(YYYY-MM-DDTHH:MM:SSZ)"
+                )
+        elif self.root_days <= RENEW_MARGIN_DAYS:
             raise PackError(
                 f"root expiry of {self.root_days} day(s) is inside the "
                 f"{RENEW_MARGIN_DAYS}-day renewal margin — the anchor would need "
@@ -65,14 +87,6 @@ class AnchorReport:
     @property
     def ok(self) -> bool:
         return not self.problems
-
-
-def _parse_expiry(raw: str) -> datetime | None:
-    try:
-        parsed = datetime.strptime(raw, "%Y-%m-%dT%H:%M:%SZ")
-    except (TypeError, ValueError):
-        return None
-    return parsed.replace(tzinfo=timezone.utc)
 
 
 def inspect_anchor(document: dict, plan: CeremonyPlan, now: datetime) -> AnchorReport:

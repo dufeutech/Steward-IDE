@@ -192,6 +192,8 @@ def ceremony(
     key_out: Annotated[Path | None, cyclopts.Parameter(help="Where the private signing key is written")] = None,
     bits: Annotated[int, cyclopts.Parameter(help="RSA key size")] = 4096,
     root_days: Annotated[int, cyclopts.Parameter(help="Days until the anchor expires")] = 365,
+    root_expiry: Annotated[str, cyclopts.Parameter(help="Fixed expiry instant (RFC 3339), overriding --root-days")] = "",
+    quiet: Annotated[bool, cyclopts.Parameter(help="Skip the custody guidance — for throwaway keys that protect nothing")] = False,
 ) -> int:
     """Run the TUF root ceremony: create the trust anchor and its signing key."""
     anchor = anchor or _repo_root() / ANCHOR_RELPATH
@@ -201,21 +203,23 @@ def ceremony(
     result = pipeline.run_ceremony(
         anchor.resolve(),
         key_out.resolve(),
-        ceremony_core.CeremonyPlan(root_days=root_days, bits=bits),
+        ceremony_core.CeremonyPlan(root_days=root_days, bits=bits,
+                                   expires=root_expiry or None),
     )
 
     print(f"anchor   {result.anchor}")
     print(f"key      {result.key_path}")
     print(f"key id   {result.key_id}")
     print(f"expires  {result.report.expires}  (version {result.report.version})")
-    print(
-        "\nThe private key above is the only copy, and it is the one secret no other\n"
-        "control can repair. Three steps remain, in order:\n\n"
-        f"  1. Store it in your password manager, then verify you can read it back.\n"
-        f"  2. gh secret set {KEY_ENV_DEFAULT} < {result.key_path}\n"
-        f"  3. Delete the file, then commit the anchor:\n"
-        f"       git add {result.anchor}"
-    )
+    if not quiet:
+        print(
+            "\nThe private key above is the only copy, and it is the one secret no other\n"
+            "control can repair. Three steps remain, in order:\n\n"
+            f"  1. Store it in your password manager, then verify you can read it back.\n"
+            f"  2. gh secret set {KEY_ENV_DEFAULT} < {result.key_path}\n"
+            f"  3. Delete the file, then commit the anchor:\n"
+            f"       git add {result.anchor}"
+        )
     return 0
 
 

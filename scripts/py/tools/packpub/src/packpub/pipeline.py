@@ -193,7 +193,7 @@ def run_ceremony(anchor: Path, key_out: Path,
         staged_key = Path(staging) / "signing-key.pem"
 
         tufrepo.root_init(staged_root)
-        tufrepo.root_expire(staged_root, tufrepo.expires_at(plan.root_days))
+        tufrepo.root_expire(staged_root, plan.expires or tufrepo.expires_at(plan.root_days))
         for role in plan.roles:
             tufrepo.root_set_threshold(staged_root, role, plan.threshold)
         key_id = tufrepo.root_gen_rsa_key(staged_root, staged_key, plan.roles, plan.bits)

@@ -33,17 +33,15 @@ printf ':root{--fixture:1}' > "$work/pack/assets/app.css"
   --out "$work/pack/manifest.json")
 
 echo "==> generating throwaway keys and a root of trust"
+# The same ceremony the operator runs for the real anchor (packpub ceremony),
+# so the fixture cannot drift from production trust setup. Only the inputs
+# differ: throwaway 2048-bit keys and a pinned expiry.
 mkdir -p "$work/tuf"
 key="$work/tuf/test-key.pem"
 root="$work/tuf/root.json"
-tuftool root init "$root"
-tuftool root expire "$root" "$root_expiry"
-for role in root snapshot targets timestamp; do
-  tuftool root set-threshold "$root" "$role" 1
-done
-tuftool root gen-rsa-key "$root" "$key" --role root --role snapshot --role targets \
-  --role timestamp --bits 2048
-tuftool root sign "$root" -k "$key"
+(cd "$repo_root/scripts/py" && uv run packpub ceremony \
+  --anchor "$root" --key-out "$key" \
+  --bits 2048 --root-expiry "$root_expiry" --quiet)
 
 echo "==> signing the repository through the real publish path"
 rm -rf "$out"
