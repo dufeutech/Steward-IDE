@@ -125,9 +125,18 @@ re-run rather than debugging a 404 that has not propagated yet.
 
 ## 4. Confirm provenance (optional, per release)
 
+The publish workflow attests the signed *metadata*, not the pack manifest — the metadata is
+what pins every blob, so attesting it covers the release. Verify one of those files, fetched
+from what is actually served:
+
 ```bash
-gh attestation verify --repo dufeutech/Steward-IDE ./tuf-verify/<pack>.manifest.json
+curl -sSO https://dufeutech.github.io/steward-packs/tuf/metadata/<version>.targets.json
+gh attestation verify --repo dufeutech/Steward-IDE ./<version>.targets.json
 ```
+
+Exit zero is the pass; the command prints nothing on success. Passing
+`./tuf-verify/<pack>.manifest.json` here returns HTTP 404 — that file is deliberately not
+an attested subject, so a 404 means "wrong file", not "bad release".
 
 ## 5. Activate the updater (once, after section 3 passes)
 
