@@ -87,9 +87,13 @@
       real. Caveat on "clean machine": run from the same workstation, but over the
       unauthenticated public Pages path — `tuftool` carries no GitHub credentials, so the
       fetch path is the one an ordinary client uses.
-- [ ] 4.5 Activate: `config/app.config.json` gains `update: {metadata_url, targets_url}`
+- [x] 4.5 Activate: `config/app.config.json` gains `update: {metadata_url, targets_url}`
       pointing at the artifact repo's Pages URLs; observe the dormant updater run a real
-      check end-to-end (activation only after 4.4 verifies).
+      check end-to-end (activation only after 4.4 verifies). Observed both documented
+      states by running the app against the live endpoint: first run
+      `updater: xkin@0.1.0 activated (pending boot)`, second run silent (already active).
+      That is the whole chain proven in one path — bundled anchor out of the resource dir,
+      live Pages endpoint, TUF verify, download, stage, activate.
 
 ## 5. Docs, cleanup, validation
 
@@ -145,3 +149,16 @@
       a re-signed timestamp, and `tuftool download` against the committed anchor still
       exits 0 with 102/102 blobs and the manifest present. **Both publisher workflows have
       now run green end-to-end.**
+- [x] 5.8 What activation found — **the client could not fetch over https at all.**
+      `tough`'s `http` feature is off by default, so the default transport rejected the
+      endpoint outright: `TUF load/verify: Transport 'unsupported URL scheme' ... The
+      library was not compiled with the http feature enabled`. The updater would have
+      failed on every client, forever, while every test stayed green — the fixture suite
+      loads over `file://`, which needs no feature, so the one scheme production actually
+      uses was the one nothing exercised. This is the defect 7.3's carried-over
+      installer-bundling gap was always most likely to be hiding, and only running the app
+      could surface it.
+      Fixed by enabling the feature; covered by a new test that dials a refused loopback
+      port (no DNS, no egress, no flakiness) and asserts the failure is a connection error
+      rather than an unsupported scheme. Confirmed the test fails when the feature is
+      removed, so it genuinely guards the flag. Rust suite now 50 (45 + 5 end-to-end).
