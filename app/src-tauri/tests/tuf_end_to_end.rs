@@ -6,8 +6,10 @@
 //! other rather than against a shared assumption. That mismatch is exactly what these
 //! tests exist to catch; the fixture's flat target names were wrong the first time.
 //!
-//! `tough` serves `file://` URLs through its default transport, so no server, no network
-//! and no secrets are involved.
+//! `tough` serves `file://` URLs through its default transport, so no server and no
+//! secrets are involved. One test is the exception and says so: it dials a refused
+//! loopback port to prove https is a transportable scheme at all, which `file://` alone
+//! can never establish. Nothing here reaches the internet.
 
 use std::path::{Path, PathBuf};
 
@@ -180,5 +182,37 @@ fn fixture_root_expiry_stays_far_in_the_future() {
     assert!(
         expires > "2100",
         "fixture root expires at {expires}; regenerate it with a far-future expiry"
+    );
+}
+
+#[tokio::test]
+async fn https_endpoints_are_a_supported_scheme() {
+    // Every test above loads over `file://`, which needs no cargo feature. Production
+    // loads over https, which needs `tough`'s `http` feature — off by default. Without
+    // it the updater failed against the real endpoint with "unsupported URL scheme"
+    // while the whole fixture suite stayed green.
+    //
+    // Port 1 on loopback refuses immediately: no DNS, no egress, no flakiness. The
+    // connection is *expected* to fail; what matters is how.
+    let temp = tempfile::tempdir().unwrap();
+    let root = std::fs::read(fixture_dir().join("root.json")).unwrap();
+
+    let result = TufSource::load(
+        &root,
+        "https://127.0.0.1:1/metadata/",
+        "https://127.0.0.1:1/targets/",
+        &temp.path().join("datastore"),
+        PACK,
+    )
+    .await;
+    // `TufSource` is not Debug, so unwrap the error by hand rather than expect_err.
+    let err = match result {
+        Ok(_) => panic!("nothing is listening on port 1"),
+        Err(e) => e,
+    };
+
+    assert!(
+        !err.contains("unsupported URL scheme") && !err.contains("http feature"),
+        "https must be a transportable scheme — enable tough's `http` feature. Got: {err}"
     );
 }
