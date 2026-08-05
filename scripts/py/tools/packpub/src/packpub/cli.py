@@ -237,7 +237,11 @@ def ceremony(
 def check_anchor(
     anchor: Annotated[Path | None, cyclopts.Parameter(help="Anchor to check; defaults to the committed one")] = None,
 ) -> int:
-    """Report an anchor's expiry and signing posture — the check nothing automates."""
+    """Report an anchor's expiry and signing posture; non-zero if it needs attention.
+
+    Run weekly by `refresh-tuf-timestamp`, which turns a failure here into a
+    tracking issue. Renewing the anchor still needs the offline root key.
+    """
     anchor = anchor or _repo_root() / ANCHOR_RELPATH
     report = pipeline.inspect_anchor(anchor)
 

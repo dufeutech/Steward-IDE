@@ -68,6 +68,13 @@ jobs:
         working-directory: scripts/py
         run: uv run --package packpub pytest tools/packpub/tests -q
 
+      # The anchor is a dated document, so it can rot without anyone editing it.
+      # The weekly watch in refresh-tuf-timestamp.yml is what catches that in a
+      # quiet repository; this catches an anchor committed already broken.
+      - name: Check the trust anchor
+        working-directory: scripts/py
+        run: uv run --package packpub packpub check-anchor
+
   docs:
     name: docs (link check)
     runs-on: ubuntu-latest

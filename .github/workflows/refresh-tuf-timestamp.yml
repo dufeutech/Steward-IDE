@@ -101,3 +101,76 @@ jobs:
           gh api -X PUT "repos/${{ github.repository }}/actions/workflows/refresh-tuf-timestamp.yml/enable" || true
         env:
           GH_TOKEN: ${{ github.token }}
+
+  # Root expiry is the one date no workflow can fix for you: renewing it needs the
+  # offline root key, which deliberately is not here. What *can* be automated is
+  # never having to remember — this rides the same weekly schedule and raises a
+  # tracking issue while there is still time to act.
+  #
+  # This is the shape mature TUF tooling settles on: `tuf-on-ci` runs an equivalent
+  # "create signing events for offline signed metadata that is about to expire"
+  # job, and Sigstore's own trust root is renewed by a human with a hardware key
+  # off the back of it. Detection is automatable; the signature is the point that
+  # is not.
+  #
+  # Separate job so an expiring anchor never blocks the freshness re-signing above:
+  # a stale timestamp is an outage, an approaching root expiry is a warning.
+  anchor-expiry:
+    name: anchor expiry watch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write # open/comment/close the tracking issue below
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Check the committed anchor
+        id: anchor
+        working-directory: scripts/py
+        run: |
+          # Non-zero once expiry is inside the renewal margin, or on any posture
+          # problem. Captured rather than failing the step so the issue below can
+          # carry the report.
+          if report=$(uv run --package packpub packpub check-anchor 2>&1); then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "$report"
+          {
+            echo "report<<REPORT_EOF"
+            echo "$report"
+            echo "REPORT_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Open, update, or close the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OK: ${{ steps.anchor.outputs.ok }}
+          REPORT: ${{ steps.anchor.outputs.report }}
+          LABEL: root-expiry
+        run: |
+          existing=$(gh issue list --label "$LABEL" --state open --json number \
+            --jq '.[0].number // empty')
+
+          if [ "$OK" = "true" ]; then
+            if [ -n "$existing" ]; then
+              gh issue close "$existing" \
+                --comment "Anchor is healthy again — renewed and outside the margin."
+            fi
+            exit 0
+          fi
+
+          body=$(printf '%s\n\n```\n%s\n```\n\n%s\n' \
+            "The committed trust anchor needs attention. Renewing it requires the offline root key and cannot be automated — see \`docs/runbooks/tuf-root-ceremony.md\`." \
+            "$REPORT" \
+            "This issue closes itself once the anchor passes again.")
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh label create "$LABEL" --description "TUF trust anchor renewal" --color FBCA04 2>/dev/null || true
+            gh issue create --label "$LABEL" \
+              --title "TUF root anchor needs renewing" --body "$body"
+          fi

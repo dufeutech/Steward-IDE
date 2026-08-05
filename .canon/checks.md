@@ -16,6 +16,7 @@ moment you first discover the real command, so the next session doesn't rediscov
 | Build             | `cd scripts/go && go build -o bin/ ./...` · `cd app/src-tauri && cargo build` | Go workspace + Rust app                            |
 | Doc links         | `cd scripts/py && uv run --package mdlinks mdlinks ../..` | Fails non-zero on any broken relative Markdown link (Rule 8). `--package` is required on a fresh venv |
 | File-size review  | `tokei . --files --sort lines`                         | Any language, largest first, against the thresholds in `.canon/guidelines.md`. Missing? `cd scripts/go && go run ./cmd/ensure tokei` |
+| Trust anchor      | `cd scripts/py && uv run --package packpub packpub check-anchor` | Root/online key split, thresholds, and expiry against the 90-day renewal margin. Fails on a dated document nobody edited — also run weekly by `refresh-tuf-timestamp`, which opens a tracking issue |
 
 A row marked "not yet defined" is a real answer: that check is **unverified** and Rule 6 says
 to report it as such. It is not permission to skip it silently.
