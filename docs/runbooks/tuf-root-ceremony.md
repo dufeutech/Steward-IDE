@@ -140,8 +140,21 @@ before committing — it catches a rotation that collapsed the two keys back int
 | timestamp | 14 days   | `refresh-tuf-timestamp` workflow, weekly          |
 | snapshot  | 6 months  | any publish; the refresh workflow when near expiry |
 | targets   | 6 months  | any publish                                        |
-| root      | 1 year    | **this runbook** — nothing automates it            |
+| root      | 1 year    | **this runbook** — signature manual, reminder automatic |
 
-Root expiry is the one date no workflow watches. Put a calendar reminder eleven months
-out when you run the ceremony, and have it run `packpub check-anchor`; an expired root
-means clients refuse every update until a new binary ships.
+You do not need to remember this date. The `refresh-tuf-timestamp` workflow runs
+`packpub check-anchor` on its weekly schedule, and once expiry is inside the 90-day
+renewal margin it opens a `root-expiry` issue and comments on it every week until the
+anchor passes again — at which point it closes the issue itself.
+
+What stays manual is the signature, because renewing means signing `root.json` with the
+offline root key, and putting that key anywhere a workflow can reach it would undo the
+split this ceremony exists to create. That trade is the same one mature TUF tooling
+makes: `tuf-on-ci` automates detection and raises a signing event, and Sigstore's own
+trust root is then signed by a human holding hardware.
+
+**An expired root does not require shipping a new binary.** Clients walk
+`N+1.root.json` forward from whatever version they were built with and only enforce
+expiry on the newest one they reach (TUF 5.3.6), so publishing a renewed root restores
+every installed client on its next check. A new binary is the recovery path only if the
+root key itself is lost, because then nothing can sign the next link in the chain.
