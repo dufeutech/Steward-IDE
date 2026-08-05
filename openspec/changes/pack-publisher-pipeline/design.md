@@ -6,12 +6,15 @@ The client half of the pack-update contract is merged and dormant. Its expectati
 frozen in code and must be treated as fixed inputs to this design:
 
 - `app/src-tauri/src/adapters/tuf_source.rs` — repository layout `metadata/` (root,
-  timestamp, snapshot, targets) + `targets/<pack>/manifest.json` +
-  `targets/<pack>/sha256/<hash>`; client is `tough` 0.24.
+  timestamp, snapshot, targets) plus a target tree; client is `tough` 0.24. At proposal
+  time the target names were nested (`<pack>/manifest.json`, `<pack>/sha256/<hash>`) and
+  treated as frozen; implementation proved they could not be produced by the adopted
+  signing tool, and they are now flat — see the target-namespace ADR below.
 - `app/src-tauri/src/lib.rs` — updater activates only when `config/app.config.json` has
   `update: {metadata_url, targets_url}` AND `resources/tuf/root.json` exists.
 - `schemas/pack.manifest.schema.json` — the release description format (spec
-  `pack-manifest`); generation currently lives in `scripts/py/lab/gen_pack_manifest.py`.
+  `pack-manifest`); generation lived in `scripts/py/lab/gen_pack_manifest.py`, which this
+  change promotes into a real tool and retires.
 
 Explore-session research (2026-08-04) that shapes this design: `tough`/`tuftool` are
 actively maintained (0.24 / CVEs fixed at 0.22, in delegated-roles code we don't use);
