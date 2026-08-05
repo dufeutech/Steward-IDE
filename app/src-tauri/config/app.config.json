@@ -7,5 +7,9 @@
       "id": "pack:assets.xkin",
       "baseline_version": "0.1.0"
     }
-  ]
+  ],
+  "update": {
+    "metadata_url": "https://dufeutech.github.io/steward-packs/tuf/metadata/",
+    "targets_url": "https://dufeutech.github.io/steward-packs/tuf/targets/"
+  }
 }
