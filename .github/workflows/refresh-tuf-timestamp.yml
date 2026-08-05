@@ -16,21 +16,28 @@ permissions:
   contents: read
 
 env:
+  # The public repository GitHub Pages serves the signed tree from — see
+  # publish-pack.yml for why it is separate from this one.
+  PACKS_REPO: dufeutech/steward-packs
+  PACKS_BRANCH: main
   TUF_SUBDIR: tuf
 
 jobs:
   refresh:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
+      actions: write # re-enable this schedule (keepalive step below)
     steps:
       - uses: actions/checkout@v5
 
-      - name: Check out the published branch
+      - name: Check out the published repository
         uses: actions/checkout@v5
         with:
-          ref: gh-pages
+          repository: ${{ env.PACKS_REPO }}
+          ref: ${{ env.PACKS_BRANCH }}
           path: published
+          ssh-key: ${{ secrets.PACKS_DEPLOY_KEY }}
 
       - name: Stop if nothing has been published yet
         id: guard
@@ -81,7 +88,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "refresh TUF timestamp" || { echo "timestamp unchanged"; exit 0; }
-          git push origin HEAD:gh-pages
+          git push origin "HEAD:$PACKS_BRANCH"
 
       # GitHub disables scheduled workflows in repositories with no activity for
       # 60 days. This keeps the schedule alive in a quiet repository, which is

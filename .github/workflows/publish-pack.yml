@@ -1,10 +1,16 @@
-# Publishes a signed pack release to the gh-pages branch.
+# Publishes a signed pack release to the public artifact repository.
 #
 # What gets published is whatever the committed manifest pins: the payload is
 # fetched from the origin that manifest records and verified against it before
 # anything is signed. Publishing a new pack version therefore means committing an
 # updated manifest first, then running this workflow — the repository stays the
 # source of truth about what is live.
+#
+# The signed tree lives in a separate public repository (PACKS_REPO) because this
+# one is private, and GitHub Pages cannot serve a private repository on the Free
+# plan. Separation is the better shape regardless: the publishing surface is a
+# minimal public artifact repo, not the source. Write access is one deploy key,
+# scoped to that repo alone — see docs/runbooks/pack-publishing.md.
 name: publish-pack
 
 on:
@@ -20,25 +26,32 @@ permissions:
 
 env:
   PACK_DIR: app/src-tauri/packs-baseline/${{ inputs.pack }}
-  # Where the signed repository lives on the published branch.
+  # The public repository GitHub Pages serves the signed tree from.
+  PACKS_REPO: dufeutech/steward-packs
+  PACKS_BRANCH: main
+  # Where the signed repository lives inside that branch.
   TUF_SUBDIR: tuf
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # push the signed repository to gh-pages
+      contents: read # check out this repository; the artifact repo uses a deploy key
       id-token: write # provenance attestation (keyless signing)
       attestations: write
     steps:
       - uses: actions/checkout@v5
 
-      - name: Check out the published branch
+      # Deliberately not fault-tolerant: the runbook creates this repository with an
+      # initial commit before the first publish, so a failure here means the hosting
+      # setup is wrong and publishing anyway would sign into the void.
+      - name: Check out the published repository
         uses: actions/checkout@v5
         with:
-          ref: gh-pages
+          repository: ${{ env.PACKS_REPO }}
+          ref: ${{ env.PACKS_BRANCH }}
           path: published
-        continue-on-error: true # absent on the very first publish
+          ssh-key: ${{ secrets.PACKS_DEPLOY_KEY }}
 
       - uses: astral-sh/setup-uv@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -91,17 +104,19 @@ jobs:
 
       # One commit publishes metadata and targets together, so clients never see a
       # repository whose metadata and content come from different releases.
-      - name: Publish to gh-pages
+      - name: Publish to the artifact repository
         run: |
           rm -rf "published/$TUF_SUBDIR"
           mkdir -p "published/$TUF_SUBDIR"
           cp -r signed/* "published/$TUF_SUBDIR/"
+          # Pages runs Jekyll over a branch deploy unless told otherwise. TUF metadata
+          # must be served byte-for-byte or every signature check fails.
+          touch published/.nojekyll
           cd published
-          git init -q 2>/dev/null || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "publish ${{ inputs.pack }} (metadata v${{ steps.state.outputs.version }})" || {
             echo "nothing to publish"; exit 0;
           }
-          git push origin HEAD:gh-pages
+          git push origin "HEAD:$PACKS_BRANCH"
