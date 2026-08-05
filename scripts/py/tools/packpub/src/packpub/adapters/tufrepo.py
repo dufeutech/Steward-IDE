@@ -146,15 +146,33 @@ def update(root_json: Path, key: Path, targets_dir: Path, outdir: Path,
 
 def refresh(root_json: Path, key: Path, outdir: Path, metadata_url: str,
             policy: ExpiryPolicy, version: int) -> None:
-    """Re-sign timestamp only — the scheduled freshness run.
+    """The scheduled freshness run: re-sign the online roles, add no targets.
 
     No targets change, so nothing about the release is touched; this exists so a
     quiet period cannot be mistaken by clients for a freeze attack.
+
+    Every online role is re-signed, not timestamp alone. `tuftool update` requires
+    a version and expiry for all three regardless — omitting them is an argument
+    error, not a timestamp-only mode — and re-signing all three is the outcome we
+    want anyway: snapshot and targets get their expiry pushed out on every run, so
+    no role can quietly reach its expiry between releases. `--add-targets` is the
+    one optional flag and stays off, which is what makes this a refresh.
+
+    Root is untouched and its key is never here: this signs with the online key,
+    which holds exactly the snapshot, targets, and timestamp roles.
+
+    All three share one version counter, as `create` and `update` do. Timestamp
+    advances weekly while targets only moves on release, so targets can jump
+    several versions at once — monotonic, which is all TUF requires.
     """
     _run([
         "update",
         "--root", str(root_json),
         "--key", str(key),
+        "--targets-expires", expires_at(policy.targets_days),
+        "--targets-version", str(version),
+        "--snapshot-expires", expires_at(policy.snapshot_days),
+        "--snapshot-version", str(version),
         "--timestamp-expires", expires_at(policy.timestamp_days),
         "--timestamp-version", str(version),
         "--metadata-url", metadata_url,
