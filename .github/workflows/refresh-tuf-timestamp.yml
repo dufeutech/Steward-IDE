@@ -74,7 +74,7 @@ jobs:
         run: |
           metadata="../../published/$TUF_SUBDIR/metadata"
           next=$(( $(jq -r '.signed.version' "$metadata/timestamp.json") + 1 ))
-          uv run packpub refresh ../../refreshed \
+          uv run --package packpub packpub refresh ../../refreshed \
             --root-json ../../app/src-tauri/tuf/root.json \
             --metadata-url "file://$(realpath "$metadata")/" \
             --version "$next"

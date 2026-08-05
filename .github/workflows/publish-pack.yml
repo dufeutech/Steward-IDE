@@ -69,7 +69,7 @@ jobs:
 
       - name: Fetch and verify the pack payload
         working-directory: scripts/py
-        run: uv run packpub baseline ../../$PACK_DIR
+        run: uv run --package packpub packpub baseline ../../$PACK_DIR
 
       - name: Decide create-vs-update and the next metadata version
         id: state
@@ -89,7 +89,7 @@ jobs:
         env:
           PACKPUB_SIGNING_KEY: ${{ secrets.PACKPUB_SIGNING_KEY }}
         run: |
-          uv run packpub publish \
+          uv run --package packpub packpub publish \
             ../../$PACK_DIR/manifest.json \
             ../../$PACK_DIR \
             ../../signed \
