@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import shutil
+import stat
 from pathlib import Path
 
 from packpub import PackError
@@ -64,6 +66,20 @@ def dereference(root: Path) -> int:
 def write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8", newline="\n")
+
+
+def write_secret(path: Path, text: str) -> None:
+    """Write key material owner-readable only, never overwriting.
+
+    Refusing an existing path is the point: the one way to destroy a trust anchor
+    beyond recovery is to overwrite the only copy of its key.
+    """
+    if path.exists():
+        raise PackError(f"{path} already exists — refusing to overwrite key material")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, stat.S_IRUSR | stat.S_IWUSR)
+    with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as key_file:
+        key_file.write(text if text.endswith("\n") else text + "\n")
 
 
 def write_bytes(path: Path, data: bytes) -> None:

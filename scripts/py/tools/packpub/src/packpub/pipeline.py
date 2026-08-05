@@ -9,10 +9,12 @@ from __future__ import annotations
 import json
 import tempfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 from packpub import PackError
 from packpub.adapters import filesystem, npm, schema, tufrepo
+from packpub.core import ceremony as ceremony_core
 from packpub.core import manifest as manifest_core
 from packpub.core import repo as repo_core
 from packpub.core.origin import parse_npm_purl
@@ -42,6 +44,14 @@ class PublishResult:
     targets_written: int
     repo_dir: Path
     signed: bool
+
+
+@dataclass(frozen=True)
+class CeremonyResult:
+    anchor: Path
+    key_path: Path
+    key_id: str
+    report: ceremony_core.AnchorReport
 
 
 def load_manifest(path: Path) -> dict:
@@ -155,3 +165,66 @@ def refresh(root_json: Path, outdir: Path, key_pem: str, metadata_url: str, vers
     with tufrepo.signing_key(key_pem) as key:
         tufrepo.refresh(root_json, key, outdir, metadata_url,
                         policy or repo_core.ExpiryPolicy(), version)
+
+
+def run_ceremony(anchor: Path, key_out: Path,
+                 plan: ceremony_core.CeremonyPlan | None = None) -> CeremonyResult:
+    """Create the trust anchor and its signing key, or leave nothing behind.
+
+    The whole ceremony happens in a temporary directory and is verified there.
+    Only an anchor that passes every check is moved into place, because a
+    half-built root is worse than no root: it looks committable.
+
+    The private key is written where the operator asked and is never read back
+    by this tool — moving it to a secret store is deliberately manual work.
+    """
+    plan = plan or ceremony_core.CeremonyPlan()
+
+    if anchor.exists():
+        raise PackError(
+            f"{anchor} already exists — refusing to replace a trust anchor. "
+            "Rotation is a different operation; see docs/runbooks/tuf-root-ceremony.md"
+        )
+    if key_out.exists():
+        raise PackError(f"{key_out} already exists — refusing to overwrite key material")
+
+    with tempfile.TemporaryDirectory(prefix="packpub-ceremony-") as staging:
+        staged_root = Path(staging) / "root.json"
+        staged_key = Path(staging) / "signing-key.pem"
+
+        tufrepo.root_init(staged_root)
+        tufrepo.root_expire(staged_root, tufrepo.expires_at(plan.root_days))
+        for role in plan.roles:
+            tufrepo.root_set_threshold(staged_root, role, plan.threshold)
+        key_id = tufrepo.root_gen_rsa_key(staged_root, staged_key, plan.roles, plan.bits)
+        tufrepo.root_sign(staged_root, staged_key)
+
+        document = load_manifest(staged_root)
+        report = ceremony_core.inspect_anchor(document, plan, datetime.now(timezone.utc))
+        if not report.ok:
+            listed = "\n  ".join(report.problems)
+            raise PackError(f"the ceremony produced an unusable anchor:\n  {listed}")
+
+        key_pem = staged_key.read_text(encoding="utf-8")
+        anchor_text = staged_root.read_text(encoding="utf-8")
+
+    # Key first: an anchor on disk with no key is a trap, since the guard above
+    # would then refuse the re-run that would fix it.
+    filesystem.write_secret(key_out, key_pem)
+    try:
+        filesystem.write_text(anchor, anchor_text)
+    except OSError:
+        key_out.unlink(missing_ok=True)
+        raise
+
+    return CeremonyResult(anchor=anchor, key_path=key_out, key_id=key_id, report=report)
+
+
+def inspect_anchor(anchor: Path,
+                   plan: ceremony_core.CeremonyPlan | None = None) -> ceremony_core.AnchorReport:
+    """Re-check an existing anchor — the expiry watch the runbook cannot automate."""
+    return ceremony_core.inspect_anchor(
+        load_manifest(anchor),
+        plan or ceremony_core.CeremonyPlan(),
+        datetime.now(timezone.utc),
+    )

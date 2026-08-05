@@ -72,6 +72,41 @@ def signing_key(pem: str) -> Iterator[Path]:
         path.unlink(missing_ok=True)
 
 
+def root_init(root_json: Path) -> None:
+    """Start an unsigned root document."""
+    _run(["root", "init", str(root_json)])
+
+
+def root_expire(root_json: Path, when: str) -> None:
+    _run(["root", "expire", str(root_json), when])
+
+
+def root_set_threshold(root_json: Path, role: str, threshold: int) -> None:
+    _run(["root", "set-threshold", str(root_json), role, str(threshold)])
+
+
+def root_gen_rsa_key(root_json: Path, key_out: Path, roles: tuple[str, ...], bits: int) -> str:
+    """Generate the signing key and register it against `roles`.
+
+    The private key lands at `key_out` and is never read back by this tool — the
+    operator moves it to their secret store. Returns the key id tuftool assigns,
+    which is what appears in the anchor and in every signature.
+    """
+    role_flags: list[str] = []
+    for role in roles:
+        role_flags += ["--role", role]
+    stdout = _run([
+        "root", "gen-rsa-key", str(root_json), str(key_out),
+        *role_flags,
+        "--bits", str(bits),
+    ])
+    return stdout.strip().splitlines()[-1].strip() if stdout.strip() else ""
+
+
+def root_sign(root_json: Path, key: Path) -> None:
+    _run(["root", "sign", str(root_json), "-k", str(key)])
+
+
 def create(root_json: Path, key: Path, targets_dir: Path, outdir: Path,
            policy: ExpiryPolicy, version: int = 1) -> None:
     """Sign a fresh repository from a target tree."""
