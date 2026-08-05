@@ -67,15 +67,26 @@
       unrecoverable — the stolen key could sign a new anchor. `packpub ceremony` now emits
       two keys, only the root key signs `root.json`, and `check-anchor` fails on any
       overlap. Tests cover the invariant; a CI job runs them.
-- [ ] 4.2 Re-run the ceremony (`packpub ceremony`) now that it splits the keys; commit the
-      new anchor; store the *online* key as `PACKPUB_SIGNING_KEY`, the root key offline
-      (user action; ceremony runbook). The single-key anchor committed in 5bd783d must be
-      replaced — `check-anchor` rejects it.
-- [ ] 4.3 Hosting setup: create `dufeutech/steward-packs` public with an initial commit,
-      add the write-scoped deploy key as `PACKS_DEPLOY_KEY`, enable Pages on `main:/`
-      (user action; publishing runbook §1).
-- [ ] 4.4 First real publish; verify the served tree with `tuftool download` against the
-      committed anchor from a clean machine/profile (publishing runbook §2–3).
+- [x] 4.2 Re-run the ceremony (`packpub ceremony`) now that it splits the keys; commit the
+      new anchor; store the *online* key as `PACKPUB_SIGNING_KEY` (done — secret updated at
+      the same minute as the anchor commit ffdf749, so it is the split key, not the
+      superseded single key). `check-anchor` passes: v1, expires 2027-08-05, 2 keys,
+      threshold 1 on all four roles.
+- [ ] 4.2b **Root key custody — outstanding.** `~/packpub-root-key.pem` is still the only
+      copy and has not reached a password manager. Losing it means every installed client
+      needs reinstalling before it will accept a new anchor. Delete it and
+      `~/packpub-signing-key.pem` only after it is stored (user action; ceremony runbook).
+- [x] 4.3 Hosting setup: `dufeutech/steward-packs` public, `PACKS_DEPLOY_KEY` installed,
+      Pages built and serving at https://dufeutech.github.io/steward-packs/.
+- [x] 4.4 First real publish and verification. Took three dispatches; the first two found
+      real defects (see 5.6). The third published `xkin` as metadata v1 + 102 target blobs.
+      Verified against the committed anchor with `tuftool download` over the public Pages
+      URLs — exit 0, 102/102 blobs written and hash-verified, `xkin.manifest.json` present.
+      Provenance verified with `gh attestation verify` over the signed metadata (exit 0),
+      with the unattested manifest as a negative control (HTTP 404), proving the check is
+      real. Caveat on "clean machine": run from the same workstation, but over the
+      unauthenticated public Pages path — `tuftool` carries no GitHub credentials, so the
+      fetch path is the one an ordinary client uses.
 - [ ] 4.5 Activate: `config/app.config.json` gains `update: {metadata_url, targets_url}`
       pointing at the artifact repo's Pages URLs; observe the dormant updater run a real
       check end-to-end (activation only after 4.4 verifies).
@@ -104,3 +115,19 @@
       reports no broken links, markdown formatted. The two workflows remain **unverified**
       — YAML parses and permissions were re-derived by hand, but nothing has run on
       GitHub yet, which is exactly what 4.3–4.4 exist to prove.
+- [x] 5.6 What the first publish found (both were defects the workflows' "parses fine"
+      status had hidden). **One:** every publisher `uv run packpub` call omitted
+      `--package`, so on CI's fresh venv nothing was installed and the entry point could
+      not spawn. Every other call site — `checks.yml`, `regenerate.sh`, `checks.md` —
+      already passed it; the two publisher workflows were the only ones nothing had run.
+      Fixed in all three call sites, including the refresh workflow, which had the same
+      latent bug and would have failed on its first weekly cron. **Two:** artifact
+      attestations are unavailable to a private repo on the Free plan, the same class of
+      constraint that moved hosting to a separate repo. Resolved by making `Steward-IDE`
+      public (ADR in design.md), after scanning the full history for key material, tokens,
+      and env files (clean) and confirming no `pull_request_target` trigger could leak
+      secrets to fork PRs. Also fixed: publishing runbook §4 named the pack manifest as the
+      attested subject; the workflow attests the signed metadata, and the manifest 404s.
+      **The refresh workflow is still UNVERIFIED** — its `--package` fix is the same
+      one-line change proven in the publish path, but it has not run; its first weekly cron
+      or a manual `workflow_dispatch` is what would prove it.
