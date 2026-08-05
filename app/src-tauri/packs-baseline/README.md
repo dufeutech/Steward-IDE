@@ -7,24 +7,32 @@ the manifest hashes, exactly like store content.
 
 The **payload trees are not committed** (see `.gitignore`) — 34 MB of generated npm
 artifacts don't belong in git. `manifest.json` IS committed: it pins exactly which
-bytes the baseline consists of.
+bytes the baseline consists of, and which origin they come from.
 
-Regenerate a baseline (until the xkin repo ships manifests itself — design D9):
+## Regenerating a payload
 
-```powershell
-# 1. fetch the payload
-npm pack @dufeut/xkin@0.1.0
-tar --force-local -xzf dufeut-xkin-0.1.0.tgz
-cp -r package/dist app/src-tauri/packs-baseline/xkin/dist
-
-# 2. regenerate + validate the manifest (from repo root)
-uv run scripts/py/lab/gen_pack_manifest.py app/src-tauri/packs-baseline/xkin `
-  --id pack:assets.xkin --version 0.1.0 --purl "pkg:npm/%40dufeut/xkin@0.1.0" `
-  --script dist/xkin.editor.min.js --script dist/xkin.tools.min.js `
-  --script dist/xkin.styles.min.js --script dist/xkin.engine.min.js `
-  --script dist/xkin.min.js `
-  --out app/src-tauri/packs-baseline/xkin/manifest.json
+```bash
+cd scripts/py && uv run packpub baseline ../../app/src-tauri/packs-baseline/xkin
 ```
 
-If the fetched tree doesn't hash-match the committed manifest, serving refuses the
-mismatched files — regenerate the manifest deliberately, never edit it by hand.
+The manifest drives everything: the tool reads the origin from its `purl`, fetches that
+exact version, places only the files the manifest lists, and verifies every hash. A
+payload that does not match is reported file-by-file and refused — it never becomes a
+valid baseline by accident.
+
+## Changing which version the baseline pins
+
+Regeneration never rewrites the manifest; that is a deliberate, separate act:
+
+```bash
+cd scripts/py && uv run packpub manifest ../../app/src-tauri/packs-baseline/xkin \
+  --id pack:assets.xkin --version <new> --purl "pkg:npm/%40dufeut/xkin@<new>" \
+  --script dist/xkin.editor.min.js --script dist/xkin.tools.min.js \
+  --script dist/xkin.styles.min.js --script dist/xkin.engine.min.js \
+  --script dist/xkin.min.js \
+  --out ../../app/src-tauri/packs-baseline/xkin/manifest.json
+```
+
+Manifest generation is deterministic — the same payload and identity produce byte-identical
+output — so a regenerated manifest that differs means the content differs. Never edit one
+by hand.
