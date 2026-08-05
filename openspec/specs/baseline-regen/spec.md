@@ -1,6 +1,10 @@
 # baseline-regen
 
-## ADDED Requirements
+## Purpose
+
+Regenerate the embedded baseline pack from its recorded external origin in one verified step, so a fresh clone reaches a bootable state without a manual checklist and without ever adopting a payload that drifted from the committed manifest.
+
+## Requirements
 
 ### Requirement: A fresh clone reaches a bootable baseline with one command
 Regenerating the embedded baseline pack MUST be a single tool invocation that fetches

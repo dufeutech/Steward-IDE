@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 from pathlib import Path
@@ -11,6 +12,7 @@ import cyclopts
 
 from packpub import PackError
 from packpub import pipeline
+from packpub.core import ceremony as ceremony_core
 from packpub.core.manifest import Identity
 
 app = cyclopts.App(
@@ -21,6 +23,29 @@ app = cyclopts.App(
 )
 
 KEY_ENV_DEFAULT = "PACKPUB_SIGNING_KEY"
+ANCHOR_RELPATH = Path("app/src-tauri/tuf/root.json")
+DEFAULT_KEY_NAME = "packpub-signing-key.pem"
+
+
+def _repo_root() -> Path:
+    """Nearest enclosing git checkout, so the anchor default works from anywhere."""
+    for candidate in (Path.cwd(), *Path.cwd().parents):
+        if (candidate / ".git").exists():
+            return candidate
+    raise PackError("not inside a git checkout — pass --anchor explicitly")
+
+
+def _refuse_key_inside_repo(key_out: Path) -> None:
+    """A signing key under the checkout is one `git add -A` from being published."""
+    try:
+        root = _repo_root()
+    except PackError:
+        return
+    if key_out.resolve().is_relative_to(root.resolve()):
+        raise PackError(
+            f"{key_out} is inside the repository at {root} — key material must live "
+            "outside the checkout so it cannot be committed"
+        )
 
 
 def _key_from_env(variable: str) -> str:
@@ -160,7 +185,72 @@ def refresh(
     return 0
 
 
+@app.command
+def ceremony(
+    *,
+    anchor: Annotated[Path | None, cyclopts.Parameter(help="Where the public anchor is committed")] = None,
+    key_out: Annotated[Path | None, cyclopts.Parameter(help="Where the private signing key is written")] = None,
+    bits: Annotated[int, cyclopts.Parameter(help="RSA key size")] = 4096,
+    root_days: Annotated[int, cyclopts.Parameter(help="Days until the anchor expires")] = 365,
+    root_expiry: Annotated[str, cyclopts.Parameter(help="Fixed expiry instant (RFC 3339), overriding --root-days")] = "",
+    quiet: Annotated[bool, cyclopts.Parameter(help="Skip the custody guidance — for throwaway keys that protect nothing")] = False,
+) -> int:
+    """Run the TUF root ceremony: create the trust anchor and its signing key."""
+    anchor = anchor or _repo_root() / ANCHOR_RELPATH
+    key_out = key_out or Path.home() / DEFAULT_KEY_NAME
+    _refuse_key_inside_repo(key_out)
+
+    result = pipeline.run_ceremony(
+        anchor.resolve(),
+        key_out.resolve(),
+        ceremony_core.CeremonyPlan(root_days=root_days, bits=bits,
+                                   expires=root_expiry or None),
+    )
+
+    print(f"anchor   {result.anchor}")
+    print(f"key      {result.key_path}")
+    print(f"key id   {result.key_id}")
+    print(f"expires  {result.report.expires}  (version {result.report.version})")
+    if not quiet:
+        print(
+            "\nThe private key above is the only copy, and it is the one secret no other\n"
+            "control can repair. Three steps remain, in order:\n\n"
+            f"  1. Store it in your password manager, then verify you can read it back.\n"
+            f"  2. gh secret set {KEY_ENV_DEFAULT} < {result.key_path}\n"
+            f"  3. Delete the file, then commit the anchor:\n"
+            f"       git add {result.anchor}"
+        )
+    return 0
+
+
+@app.command(name="check-anchor")
+def check_anchor(
+    anchor: Annotated[Path | None, cyclopts.Parameter(help="Anchor to check; defaults to the committed one")] = None,
+) -> int:
+    """Report an anchor's expiry and signing posture — the check nothing automates."""
+    anchor = anchor or _repo_root() / ANCHOR_RELPATH
+    report = pipeline.inspect_anchor(anchor)
+
+    print(f"{anchor}")
+    print(f"  version    {report.version}")
+    print(f"  expires    {report.expires}")
+    print(f"  keys       {len(report.key_ids)}")
+    print(f"  signatures {report.signature_count}")
+    for role, threshold in sorted(report.thresholds.items()):
+        print(f"  {role:<10} threshold {threshold}")
+
+    for problem in report.problems:
+        print(f"problem: {problem}", file=sys.stderr)
+    return 0 if report.ok else 1
+
+
 def main() -> int:
+    # Messages here carry em-dashes and paths; a cp1252 console would mangle
+    # both, and this tool's output is read at moments that matter.
+    for stream in (sys.stdout, sys.stderr):
+        with contextlib.suppress(AttributeError, OSError):
+            stream.reconfigure(encoding="utf-8")
+
     try:
         return app() or 0
     except PackError as exc:
