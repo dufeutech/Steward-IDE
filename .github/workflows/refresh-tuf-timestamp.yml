@@ -82,12 +82,14 @@ jobs:
       - name: Publish the refreshed metadata
         if: steps.guard.outputs.proceed == 'true'
         run: |
-          cp refreshed/*.json "published/$TUF_SUBDIR/metadata/"
+          # tuftool writes metadata/ and targets/ under its outdir. Only metadata is
+          # refreshed here — no target changed — so only metadata is copied across.
+          cp refreshed/metadata/*.json "published/$TUF_SUBDIR/metadata/"
           cd published
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "refresh TUF timestamp" || { echo "timestamp unchanged"; exit 0; }
+          git commit -m "refresh TUF metadata" || { echo "metadata unchanged"; exit 0; }
           git push origin "HEAD:$PACKS_BRANCH"
 
       # GitHub disables scheduled workflows in repositories with no activity for
