@@ -5,12 +5,18 @@
 //! replay/rollback/freeze/mix-and-match defense. This adapter only maps our port onto
 //! a verified repository.
 //!
-//! Repository layout (static files, e.g. GitHub Releases — ADR: Rent):
+//! Repository layout (static files on GitHub Pages — ADR: Rent):
 //! ```text
 //! metadata/  root.json, timestamp.json, snapshot.json, targets.json
-//! targets/   <pack>/manifest.json          the release description
-//!            <pack>/sha256/<hash>          each blob, addressed by content
+//! targets/   <pack>.manifest.json          the release description
+//!            <hash>                        each blob, addressed by content
 //! ```
+//!
+//! Target names are flat because the publisher's signing tool (`tuftool`, the
+//! CLI sibling of this crate) names every target after a file's basename, so no
+//! directory structure survives into the namespace. Blob names are content
+//! hashes and therefore already globally unique; the pack prefix keeps manifests
+//! distinct.
 
 use tough::{IntoVec, Repository, RepositoryLoader, TargetName};
 
@@ -70,11 +76,11 @@ impl TufSource {
 
 impl UpdateSource for TufSource {
     async fn manifest_bytes(&self) -> Result<Option<Vec<u8>>, String> {
-        self.read(&format!("{}/manifest.json", self.pack)).await
+        self.read(&format!("{}.manifest.json", self.pack)).await
     }
 
     async fn fetch_blob(&self, sha256: &str) -> Result<Vec<u8>, String> {
-        self.read(&format!("{}/sha256/{}", self.pack, sha256))
+        self.read(sha256)
             .await?
             .ok_or_else(|| format!("blob {sha256} not in repository"))
     }

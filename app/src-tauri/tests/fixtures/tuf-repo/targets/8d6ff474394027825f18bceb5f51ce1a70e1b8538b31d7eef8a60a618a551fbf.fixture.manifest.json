@@ -1,0 +1,25 @@
+{
+  "format_version": 1,
+  "id": "pack:tests.fixture",
+  "version": "1.0.0",
+  "files": [
+    {
+      "path": "assets/app.css",
+      "size": 18,
+      "sha256": "143d7f62a6d993bce881a0ff7306f0a41167825ecf4ed487b3eebfb415741e74"
+    },
+    {
+      "path": "assets/app.js",
+      "size": 31,
+      "sha256": "dcf8551a3d94108d32de4b29e5e35f1e00e60fd9361020069261ba1725f7fd7c"
+    }
+  ],
+  "entry": {
+    "scripts": [
+      "assets/app.js"
+    ],
+    "styles": [
+      "assets/app.css"
+    ]
+  }
+}
