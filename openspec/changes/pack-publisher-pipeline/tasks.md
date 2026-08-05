@@ -53,12 +53,25 @@
 - [x] 4.1 Root ceremony runbook (`docs/`): key generation, offline custody, expiry
       ladder (P4), rotation procedure. User executes the ceremony locally; commit the
       resulting public `root.json`.
-- [ ] 4.2 Store the online key as a GitHub Actions secret (user action; runbook step).
-- [ ] 4.3 First real publish to `gh-pages`; verify the served tree with a conforming
-      client from a clean machine/profile.
-- [ ] 4.4 Activate: `config/app.config.json` gains `update: {metadata_url, targets_url}`
-      (Pages URLs); ship `resources/tuf/root.json`; observe the dormant updater run a
-      real check end-to-end (activation only after 4.3 verifies).
+- [x] 4.1b Bundle the anchor: `tuf/` added to `tauri.conf.json` `bundle.resources`, with
+      a placeholder README so the resource exists before the ceremony runs. Without this
+      the ceremony's `root.json` would never reach the binary the updater reads it from.
+- [x] 4.1c Hosting revision (ADR in design.md): this repo is private on a Free-plan org,
+      where Pages serves nothing. Signed tree moves to the public artifact repo
+      `dufeutech/steward-packs`; both workflows now target it via a write-scoped deploy
+      key (`PACKS_DEPLOY_KEY`), and the first-publish path no longer depends on a failed
+      checkout's leftovers. Operator half written up in
+      `docs/runbooks/pack-publishing.md`.
+- [ ] 4.2 Run the ceremony (`packpub ceremony`); commit the anchor; store the online key
+      as `PACKPUB_SIGNING_KEY` (user action; ceremony runbook).
+- [ ] 4.3 Hosting setup: create `dufeutech/steward-packs` public with an initial commit,
+      add the write-scoped deploy key as `PACKS_DEPLOY_KEY`, enable Pages on `main:/`
+      (user action; publishing runbook §1).
+- [ ] 4.4 First real publish; verify the served tree with `tuftool download` against the
+      committed anchor from a clean machine/profile (publishing runbook §2–3).
+- [ ] 4.5 Activate: `config/app.config.json` gains `update: {metadata_url, targets_url}`
+      pointing at the artifact repo's Pages URLs; observe the dormant updater run a real
+      check end-to-end (activation only after 4.4 verifies).
 
 ## 5. Docs, cleanup, validation
 
@@ -74,4 +87,13 @@
       signed repository (accept, tampered-blob, tampered-metadata). 7.3's other
       remainder — `tauri build` installer bundling — is **still UNVERIFIED**; it is out
       of this change's scope (non-goal). Publisher CI workflows are unverified until
-      they run on GitHub (tasks 4.2–4.4).
+      they run on GitHub (tasks 4.2–4.5).
+- [x] 5.4 Publishing runbook (`docs/runbooks/pack-publishing.md`): hosting setup, release,
+      verification, activation, rollback — the operator half of 4.2–4.5. Architecture
+      diagram updated with the split-repo hosting (Rule 1).
+- [x] 5.5 Re-run the suite after the hosting revision (Rule 6). Same result, now with
+      `cargo build` working locally (the Smart App Control block was lifted): fmt clean,
+      `clippy --all-targets` clean, 49 tests pass, `go vet`/`go build` clean, mdlinks
+      reports no broken links, markdown formatted. The two workflows remain **unverified**
+      — YAML parses and permissions were re-derived by hand, but nothing has run on
+      GitHub yet, which is exactly what 4.3–4.4 exist to prove.

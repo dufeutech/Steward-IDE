@@ -23,7 +23,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": ["config/", "shell/", "schemas/", "packs-baseline/"],
+    "resources": ["config/", "shell/", "schemas/", "packs-baseline/", "tuf/"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -193,6 +193,26 @@ signature-scheme ADR
 - **Isolation**: `metadata_url`/`targets_url` in `config/app.config.json`; the client's
   update-source adapter is host-agnostic.
 
+### Decision: which repository Pages serves — a separate public artifact repo (amends the
+hosting ADR above)
+
+- **Status**: approved
+- **Why**: Discovered at activation time (task 4.3): `dufeutech/Steward-IDE` is private and
+  the org is on the Free plan, where GitHub Pages does not serve private repositories at
+  all. The ADR above chose Pages on its merits and those still hold — only *which*
+  repository serves it had to change. `dufeutech/steward-packs` is public and holds
+  nothing but published metadata and blobs, which are world-readable by design; the
+  private repo keeps the source and reaches the public one through a single deploy key
+  scoped to it. This is the better separation regardless of billing: the internet-facing
+  repository never holds write access to the source.
+- **Considered**: making `Steward-IDE` public (free and zero-change, but publishes the
+  entire source tree — rejected as too large a consequence for a hosting detail);
+  upgrading the org to Team (~$4/user/month for a property a free public repo already
+  provides); a different host entirely — R2/S3+CDN or back to Releases (re-opens a
+  settled ADR and adds an account, billing, and a new adapter surface for no gain).
+- **Isolation**: two workflow env vars (`PACKS_REPO`, `PACKS_BRANCH`) and the two config
+  URLs. Nothing in `packpub` or the client knows where the tree is hosted.
+
 ### Decision: build provenance — Rent GitHub artifact attestations
 
 - **Status**: approved
@@ -238,10 +258,14 @@ signature-scheme ADR
 
 1. Land pipeline tool + fixture + E2E tests (repo has no public side effects yet).
 2. Root ceremony (local, user); commit `root.json`; store online key as Actions secret.
-3. First publish to `gh-pages`; verify URLs serve the tree.
-4. Flip `app.config.json` + resource root.json (P8) — updater goes live.
-5. Rollback: remove the `update` block from config; clients revert to store/baseline
+3. Hosting setup: create the public artifact repo, deploy key, enable Pages.
+4. First publish; verify the served tree with `tuftool download` from a clean profile.
+5. Flip `app.config.json` (P8) — updater goes live. The anchor already ships: `tuf/` is
+   a bundled resource.
+6. Rollback: remove the `update` block from config; clients revert to store/baseline
    behavior (spec: absence of endpoint never blocks use).
+
+Steps 3–5 are operator work, written up in `docs/runbooks/pack-publishing.md`.
 
 ## Open Questions
 
@@ -251,5 +275,8 @@ signature-scheme ADR
   `FilesystemTransport` for metadata and targets alike. `TufSource::load` sets no
   transport, so the fixture loads through the same code path production uses. The scoped
   HTTP-server fallback is not needed and was not built.
-- Pages URL final form (`https://dufeutech.github.io/Steward-IDE/tuf/...`) — fixed at
-  first deploy; config change only.
+- ~~Pages URL final form (`https://dufeutech.github.io/Steward-IDE/tuf/...`)~~
+  **Resolved**: Pages cannot serve this private repo on the Free plan, so the tree moves
+  to a public artifact repo (ADR above). Final form is
+  `https://dufeutech.github.io/steward-packs/tuf/{metadata,targets}/`, fixed the moment
+  Pages is enabled — changing it later means shipping a new binary.
