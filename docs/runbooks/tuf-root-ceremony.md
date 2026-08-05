@@ -63,6 +63,9 @@ Then, in order — this part is deliberately manual, because custody cannot be a
    git add app/src-tauri/tuf/root.json
    ```
 
+Next: [publishing a pack and activating the updater](pack-publishing.md) — hosting setup,
+the first release, and how to prove the served tree verifies before any client trusts it.
+
 ## Checking an anchor
 
 ```bash
