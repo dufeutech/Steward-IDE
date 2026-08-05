@@ -1,6 +1,10 @@
 # pack-publish
 
-## ADDED Requirements
+## Purpose
+
+Publish pack versions that a conforming client can verify and activate unattended: complete signed repositories, metadata kept fresh on a schedule, injected signing keys, verifiable build provenance, and an end-to-end proof against the real client before anything is exposed.
+
+## Requirements
 
 ### Requirement: A published release is complete and client-acceptable
 Publishing a pack version MUST produce, in one operation, everything a conforming client
