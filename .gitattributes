@@ -1,11 +1,28 @@
+# Line endings are LF, in the repository and in the working tree.
+#
+# Every text file here is written by a formatter that emits LF — prettier,
+# rustfmt, gofmt, ruff. Checking out CRLF meant each format run rewrote what git
+# had just translated, so files showed as modified with an empty diff. There are
+# no Windows-native scripts in this repository to want CRLF.
+#
+# Order matters: later rules win, so the exceptions below must stay below this.
+* text=auto eol=lf
+
+# Binary: never translated, never diffed as text. `text=auto` detects most of
+# these anyway; naming them makes a misdetection impossible.
+*.png binary
+*.ico binary
+*.icns binary
+
 # Files whose exact bytes matter.
 #
 # Pack manifests are compared byte-for-byte across platforms: the same payload
-# must produce the same manifest on a developer machine and on CI, so they are
-# pinned to LF rather than translated per checkout.
+# must produce the same manifest on a developer machine and on CI. The global
+# rule above already pins them; this stays as the explicit statement of why, so
+# relaxing the global rule cannot silently break determinism.
 app/src-tauri/packs-baseline/**/manifest.json text eol=lf
 
 # Signed TUF metadata and the fixture repository are verified against signatures
 # over their bytes. Any line-ending translation invalidates them, so nothing here
-# is treated as text.
+# is treated as text — this must remain the last word.
 app/src-tauri/tests/fixtures/** -text
