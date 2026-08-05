@@ -225,6 +225,33 @@ hosting ADR above)
 - **Isolation**: one step in the publish workflow; nothing in the pipeline package or
   client depends on it.
 
+### Decision: `Steward-IDE` becomes a public repository (makes the provenance ADR above
+executable)
+
+- **Status**: approved
+- **Why**: Discovered on the first real publish (task 4.4): `actions/attest-build-provenance`
+  fails with "Feature not available for the dufeutech organization" — artifact attestations,
+  like Pages, are unavailable to a private repo on the Free plan. The ADR above assumed a
+  public repo without saying so, the same blind spot that produced the hosting amendment.
+  Provenance is a `MUST` in `pack-publish`, so it could not simply be dropped. Making the
+  source public satisfies the requirement at no cost and with no change to the pipeline.
+  Before flipping visibility, the full history was scanned for key material, tokens, and
+  env files — all clean — and the workflow triggers checked for `pull_request_target`, which
+  would have exposed secrets to fork PRs. There is none: CI runs on `pull_request` (no
+  secrets for forks) and both publisher workflows are `workflow_dispatch`/`schedule`.
+- **Considered**: upgrading the org to Team (~$4/user/month, keeps the source closed —
+  viable, rejected by the operator in favour of going public); amending the spec to drop the
+  provenance `MUST` (free, but a real reduction in posture for a software updater);
+  attesting from the public `steward-packs` repo instead (free and it runs, but the
+  provenance statement would name *that* repo's workflow and commit as the builder rather
+  than the publish run that produced the artifacts — it fails the requirement as written
+  while appearing to pass, so it was rejected as worse than an honest gap).
+- **Consequence for the hosting ADR**: Pages would now serve `Steward-IDE` directly, so the
+  constraint that forced the split no longer binds. The split-repo decision **stands
+  unchanged** — its own reasoning ("the better separation regardless of billing: the
+  internet-facing repository never holds write access to the source") never depended on the
+  billing constraint, and the arrangement is built and verified. Nothing to undo.
+
 ### Decision: online signing-key custody — Rent GitHub Actions secrets
 
 - **Status**: approved
