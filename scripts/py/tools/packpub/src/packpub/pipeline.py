@@ -49,6 +49,8 @@ class PublishResult:
 @dataclass(frozen=True)
 class CeremonyResult:
     anchor: Path
+    root_key_path: Path
+    root_key_id: str
     key_path: Path
     key_id: str
     report: ceremony_core.AnchorReport
@@ -167,16 +169,19 @@ def refresh(root_json: Path, outdir: Path, key_pem: str, metadata_url: str, vers
                         policy or repo_core.ExpiryPolicy(), version)
 
 
-def run_ceremony(anchor: Path, key_out: Path,
+def run_ceremony(anchor: Path, key_out: Path, root_key_out: Path,
                  plan: ceremony_core.CeremonyPlan | None = None) -> CeremonyResult:
-    """Create the trust anchor and its signing key, or leave nothing behind.
+    """Create the trust anchor and its two keys, or leave nothing behind.
 
     The whole ceremony happens in a temporary directory and is verified there.
     Only an anchor that passes every check is moved into place, because a
     half-built root is worse than no root: it looks committable.
 
-    The private key is written where the operator asked and is never read back
-    by this tool — moving it to a secret store is deliberately manual work.
+    Two keys, because they have different custody: the root key signs the anchor
+    and stays offline, the online key signs releases and goes to CI. Only the
+    root key signs `root.json` — that is what a client checks when it decides
+    whether to accept a rotation. Neither private key is ever read back by this
+    tool; moving them to their stores is deliberately manual work.
     """
     plan = plan or ceremony_core.CeremonyPlan()
 
@@ -185,19 +190,33 @@ def run_ceremony(anchor: Path, key_out: Path,
             f"{anchor} already exists — refusing to replace a trust anchor. "
             "Rotation is a different operation; see docs/runbooks/tuf-root-ceremony.md"
         )
-    if key_out.exists():
-        raise PackError(f"{key_out} already exists — refusing to overwrite key material")
+    if key_out.resolve() == root_key_out.resolve():
+        raise PackError(
+            f"the root key and the online key would both be written to {key_out} — "
+            "one would overwrite the other, and the separation would be lost"
+        )
+    for destination in (key_out, root_key_out):
+        if destination.exists():
+            raise PackError(f"{destination} already exists — refusing to overwrite key material")
 
     with tempfile.TemporaryDirectory(prefix="packpub-ceremony-") as staging:
         staged_root = Path(staging) / "root.json"
-        staged_key = Path(staging) / "signing-key.pem"
+        staged_root_key = Path(staging) / "root-key.pem"
+        staged_online_key = Path(staging) / "signing-key.pem"
 
         tufrepo.root_init(staged_root)
         tufrepo.root_expire(staged_root, plan.expires or tufrepo.expires_at(plan.root_days))
         for role in plan.roles:
             tufrepo.root_set_threshold(staged_root, role, plan.threshold)
-        key_id = tufrepo.root_gen_rsa_key(staged_root, staged_key, plan.roles, plan.bits)
-        tufrepo.root_sign(staged_root, staged_key)
+        root_key_id = tufrepo.root_gen_rsa_key(
+            staged_root, staged_root_key, plan.root_roles, plan.bits
+        )
+        key_id = tufrepo.root_gen_rsa_key(
+            staged_root, staged_online_key, plan.online_roles, plan.bits
+        )
+        # Signed by the root key alone: the anchor's authority comes from the key
+        # that never enters CI.
+        tufrepo.root_sign(staged_root, staged_root_key)
 
         document = load_manifest(staged_root)
         report = ceremony_core.inspect_anchor(document, plan, datetime.now(timezone.utc))
@@ -205,19 +224,31 @@ def run_ceremony(anchor: Path, key_out: Path,
             listed = "\n  ".join(report.problems)
             raise PackError(f"the ceremony produced an unusable anchor:\n  {listed}")
 
-        key_pem = staged_key.read_text(encoding="utf-8")
+        root_key_pem = staged_root_key.read_text(encoding="utf-8")
+        key_pem = staged_online_key.read_text(encoding="utf-8")
         anchor_text = staged_root.read_text(encoding="utf-8")
 
-    # Key first: an anchor on disk with no key is a trap, since the guard above
+    # Keys first: an anchor on disk with no keys is a trap, since the guard above
     # would then refuse the re-run that would fix it.
-    filesystem.write_secret(key_out, key_pem)
+    written: list[Path] = []
     try:
+        for destination, material in ((root_key_out, root_key_pem), (key_out, key_pem)):
+            filesystem.write_secret(destination, material)
+            written.append(destination)
         filesystem.write_text(anchor, anchor_text)
     except OSError:
-        key_out.unlink(missing_ok=True)
+        for destination in written:
+            destination.unlink(missing_ok=True)
         raise
 
-    return CeremonyResult(anchor=anchor, key_path=key_out, key_id=key_id, report=report)
+    return CeremonyResult(
+        anchor=anchor,
+        root_key_path=root_key_out,
+        root_key_id=root_key_id,
+        key_path=key_out,
+        key_id=key_id,
+        report=report,
+    )
 
 
 def inspect_anchor(anchor: Path,

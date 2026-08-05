@@ -238,14 +238,40 @@ hosting ADR above)
 - **Isolation**: key reaches the signing adapter via environment injection in the
   workflow; no path into source, published tree, or artifacts.
 
+### Decision: root/online key separation — supersedes the single-key posture (D4)
+
+- **Status**: approved
+- **Why**: Caught during the first ceremony (task 4.2): `packpub ceremony` generated one
+  key for all four roles, and the runbook simultaneously claimed "the root key never
+  touches CI". Both could not be true. The single-key posture makes a CI compromise
+  *unrecoverable* — the stolen key can sign a new trust anchor, which every client accepts
+  as a legitimate rotation, so there is no move left. Splitting bounds the blast radius:
+  the online key (`snapshot`, `targets`, `timestamp`) publishes releases, the root key
+  signs only the anchor and never leaves the operator's password manager. Recovery becomes
+  a real procedure rather than a sentence in a risk table.
+- **Considered**: keeping one key and correcting the docs to admit the weaker model
+  (honest, zero work, but chooses the weaker model at the exact moment changing it was
+  free — nothing published, no binaries shipped); threshold >1 with multiple root keys
+  (correct for an organization with several operators, unnecessary for one).
+- **Cost**: two RSA keypairs instead of one, two custody steps instead of one, and a
+  rotation procedure that branches on which key is being replaced.
+- **Enforcement**: `inspect_anchor` reports an overlap between root and online key ids as
+  a problem, so `packpub check-anchor` fails on an anchor that collapses them — the
+  property is checked, not remembered.
+- **Isolation**: `packpub.core.ceremony` (role constants + the overlap check) and
+  `pipeline.run_ceremony`. Publishing and refreshing are unchanged: they only ever needed
+  the online key, because `tuftool create/update` signs the three online roles and takes
+  the already-signed root as input.
+
 ## Risks / Trade-offs
 
 - [Weekly cron in a quiet repo gets disabled by GitHub after 60 days of repo inactivity]
   → known GitHub behavior for scheduled workflows; mitigation: the workflow re-enables
   via a keepalive step or the runbook notes it; revisit if the repo goes dormant.
-- [Online key in Actions secrets = CI compromise signs releases] → accepted (prior D4
-  single-online-key posture); root rotation is the recovery path; revisit at
-  third-party-pack time.
+- [Online key in Actions secrets = CI compromise signs releases] → accepted, and now
+  genuinely bounded: since the split (ADR above) the online key cannot sign a new root, so
+  rotation signed by the offline root key is a real recovery path rather than a hope.
+  Revisit thresholds at third-party-pack time.
 - [tough may not accept `file://` for metadata/targets URLs in tests] → checked first
   (P7 task order); fallback dev-dep HTTP server is already scoped.
 - [Pages deploys are eventually consistent; a publish could briefly serve mixed old/new

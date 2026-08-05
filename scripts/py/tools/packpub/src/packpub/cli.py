@@ -25,6 +25,7 @@ app = cyclopts.App(
 KEY_ENV_DEFAULT = "PACKPUB_SIGNING_KEY"
 ANCHOR_RELPATH = Path("app/src-tauri/tuf/root.json")
 DEFAULT_KEY_NAME = "packpub-signing-key.pem"
+DEFAULT_ROOT_KEY_NAME = "packpub-root-key.pem"
 
 
 def _repo_root() -> Path:
@@ -189,35 +190,44 @@ def refresh(
 def ceremony(
     *,
     anchor: Annotated[Path | None, cyclopts.Parameter(help="Where the public anchor is committed")] = None,
-    key_out: Annotated[Path | None, cyclopts.Parameter(help="Where the private signing key is written")] = None,
+    key_out: Annotated[Path | None, cyclopts.Parameter(help="Where the private online signing key is written")] = None,
+    root_key_out: Annotated[Path | None, cyclopts.Parameter(help="Where the private root key is written")] = None,
     bits: Annotated[int, cyclopts.Parameter(help="RSA key size")] = 4096,
     root_days: Annotated[int, cyclopts.Parameter(help="Days until the anchor expires")] = 365,
     root_expiry: Annotated[str, cyclopts.Parameter(help="Fixed expiry instant (RFC 3339), overriding --root-days")] = "",
     quiet: Annotated[bool, cyclopts.Parameter(help="Skip the custody guidance — for throwaway keys that protect nothing")] = False,
 ) -> int:
-    """Run the TUF root ceremony: create the trust anchor and its signing key."""
+    """Run the TUF root ceremony: create the trust anchor and its two keys."""
     anchor = anchor or _repo_root() / ANCHOR_RELPATH
     key_out = key_out or Path.home() / DEFAULT_KEY_NAME
+    root_key_out = root_key_out or Path.home() / DEFAULT_ROOT_KEY_NAME
     _refuse_key_inside_repo(key_out)
+    _refuse_key_inside_repo(root_key_out)
 
     result = pipeline.run_ceremony(
         anchor.resolve(),
         key_out.resolve(),
+        root_key_out.resolve(),
         ceremony_core.CeremonyPlan(root_days=root_days, bits=bits,
                                    expires=root_expiry or None),
     )
 
-    print(f"anchor   {result.anchor}")
-    print(f"key      {result.key_path}")
-    print(f"key id   {result.key_id}")
-    print(f"expires  {result.report.expires}  (version {result.report.version})")
+    print(f"anchor      {result.anchor}")
+    print(f"root key    {result.root_key_path}")
+    print(f"root key id {result.root_key_id}")
+    print(f"online key  {result.key_path}")
+    print(f"online id   {result.key_id}")
+    print(f"expires     {result.report.expires}  (version {result.report.version})")
     if not quiet:
         print(
-            "\nThe private key above is the only copy, and it is the one secret no other\n"
-            "control can repair. Three steps remain, in order:\n\n"
-            f"  1. Store it in your password manager, then verify you can read it back.\n"
+            "\nTwo keys, two custody stories — keeping them apart is what makes a CI\n"
+            "compromise survivable. Four steps remain, in order:\n\n"
+            "  1. Store the ROOT key in your password manager, then verify you can read\n"
+            "     it back. It is the only copy, and no other control can repair its loss.\n"
             f"  2. gh secret set {KEY_ENV_DEFAULT} < {result.key_path}\n"
-            f"  3. Delete the file, then commit the anchor:\n"
+            "  3. Delete BOTH key files from disk. The root key must never reach CI, and\n"
+            "     the online key now lives in the secret store.\n"
+            f"  4. Commit the anchor:\n"
             f"       git add {result.anchor}"
         )
     return 0
@@ -234,7 +244,7 @@ def check_anchor(
     print(f"{anchor}")
     print(f"  version    {report.version}")
     print(f"  expires    {report.expires}")
-    print(f"  keys       {len(report.key_ids)}")
+    print(f"  keys       {len(report.key_ids)} (expected 2: root offline, online in CI)")
     print(f"  signatures {report.signature_count}")
     for role, threshold in sorted(report.thresholds.items()):
         print(f"  {role:<10} threshold {threshold}")

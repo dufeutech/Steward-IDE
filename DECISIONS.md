@@ -11,10 +11,10 @@ Concrete tool names live here only — `.canon/` and `openspec/specs/` stay abst
   ed25519, `sha2`, `reqwest`, `jsonschema`, registry kind `pack`, GitHub Releases
   endpoint):
   [openspec/changes/archive/2026-08-04-asset-pack-system/design.md](openspec/changes/archive/2026-08-04-asset-pack-system/design.md)
-- `pack-publisher-pipeline` (active) — 5 ADRs (repo signing `tuftool`, hosting GitHub
+- `pack-publisher-pipeline` (active) — 6 ADRs (repo signing `tuftool`, hosting GitHub
   Pages — supersedes the GitHub Releases endpoint ADR above, served from a separate
   public artifact repo, provenance GitHub attestations, online-key custody Actions
-  secrets):
+  secrets, root/online key separation — supersedes the single-key D4 posture above):
   [openspec/changes/pack-publisher-pipeline/design.md](openspec/changes/pack-publisher-pipeline/design.md)
 
 ## Decisions

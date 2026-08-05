@@ -10,11 +10,18 @@ This is what closes the "TUF end-to-end UNVERIFIED" remainder the `asset-pack-sy
 change left behind: before it existed, nothing had ever verified that what a publisher
 produces is what the client accepts.
 
-## The keys here are throwaway
+## The keys here are throwaway, and none of them are here
 
-`test-key.pem` signs nothing real. It is committed on purpose, because a test that
-cannot sign cannot test rejection. The production trust anchor lives at
-`app/src-tauri/tuf/root.json` and its key never leaves the operator's custody — see
+Regeneration creates a throwaway root key and a throwaway online key, uses them, and
+leaves both in the temporary directory it built the fixture in. Only `root.json` — public
+metadata — is committed. Nothing in the tests signs anything: the tamper cases mutate
+bytes in a target or in metadata, which is precisely what a client must reject, and
+re-signing would test the signer rather than the client.
+
+The fixture follows the production key split (root key signs the anchor; the online key
+signs `snapshot`/`targets`/`timestamp`), so it cannot drift from the trust setup the
+operator actually runs. The production anchor lives at `app/src-tauri/tuf/root.json` and
+its root key never leaves the operator's custody — see
 `docs/runbooks/tuf-root-ceremony.md`.
 
 Root metadata expires in 2126. That is not sloppiness: a fixture whose expiry passes

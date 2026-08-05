@@ -17,10 +17,17 @@ from datetime import datetime, timezone
 
 from packpub import PackError
 
-# One key signs every role: the single-key posture recorded in the
-# asset-pack-system design (D4). Splitting roles later needs no client change,
-# because clients read thresholds out of the anchor rather than assuming them.
-ROLES: tuple[str, ...] = ("root", "snapshot", "targets", "timestamp")
+# Two keys, two custody stories. The root key signs the anchor and nothing else,
+# so it can stay offline in the operator's password manager. The online key signs
+# every release and therefore has to live in CI.
+#
+# The separation is the whole recovery story: an attacker who takes the online key
+# can sign releases, but cannot sign a new trust anchor to make that permanent —
+# the operator signs a rotation offline and every installed client migrates. With
+# one key across all four roles, the compromise is unrecoverable, which is why
+# `inspect_anchor` treats an overlap as a problem rather than a style preference.
+ROOT_ROLES: tuple[str, ...] = ("root",)
+ONLINE_ROLES: tuple[str, ...] = ("snapshot", "targets", "timestamp")
 
 # Below this, a root nearing expiry is a latent outage: an expired anchor makes
 # clients refuse every update, and only a new binary restores them.
@@ -46,15 +53,27 @@ class CeremonyPlan:
     against the clock by `inspect_anchor`.
     """
 
-    roles: tuple[str, ...] = ROLES
+    root_roles: tuple[str, ...] = ROOT_ROLES
+    online_roles: tuple[str, ...] = ONLINE_ROLES
     threshold: int = 1
     root_days: int = 365
     bits: int = 4096
     expires: str | None = None
 
+    @property
+    def roles(self) -> tuple[str, ...]:
+        """Every role the anchor must define, whichever key carries it."""
+        return self.root_roles + self.online_roles
+
     def __post_init__(self) -> None:
-        if not self.roles:
-            raise PackError("a ceremony plan must name at least one role")
+        if not self.root_roles or not self.online_roles:
+            raise PackError("a ceremony plan must name both root and online roles")
+        overlap = set(self.root_roles) & set(self.online_roles)
+        if overlap:
+            raise PackError(
+                f"role(s) {sorted(overlap)} are listed as both root and online — that is "
+                "the separation this ceremony exists to create"
+            )
         if self.threshold < 1:
             raise PackError(f"threshold must be at least 1, got {self.threshold}")
         if self.bits < 2048:
@@ -124,10 +143,26 @@ def inspect_anchor(document: dict, plan: CeremonyPlan, now: datetime) -> AnchorR
             if key_id not in keys:
                 problems.append(f"role {role!r} references unknown key {key_id}")
 
+    root_key_ids: set[str] = set()
+    for role in plan.root_roles:
+        root_key_ids |= set((roles.get(role) or {}).get("keyids") or [])
+    online_key_ids: set[str] = set()
+    for role in plan.online_roles:
+        online_key_ids |= set((roles.get(role) or {}).get("keyids") or [])
+
+    # The invariant the whole ceremony exists to produce. A key holding both sides
+    # is in CI *and* able to sign a new anchor, which makes a CI compromise
+    # permanent — see the module header.
+    shared = root_key_ids & online_key_ids
+    if shared:
+        problems.append(
+            f"{len(shared)} key(s) sign both root and online roles — the online key "
+            "lives in CI, so this would let a CI compromise sign a new trust anchor"
+        )
+
     if not signatures:
         problems.append("the anchor carries no signatures — it was never signed")
     else:
-        root_key_ids = set((roles.get("root") or {}).get("keyids") or [])
         for signature in signatures:
             key_id = signature.get("keyid")
             if root_key_ids and key_id not in root_key_ids:

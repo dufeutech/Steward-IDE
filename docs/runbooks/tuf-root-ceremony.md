@@ -17,6 +17,19 @@ the one secret whose compromise cannot be repaired by any other control in the s
 The root key never touches CI. The online key never touches the repository. If both
 statements stop being true, the signing model is broken regardless of what the code does.
 
+### Why two keys and not one
+
+One key holding all four roles would be simpler and is what the first ceremony produced.
+It is also unrecoverable: that key has to be in CI to sign releases, so anyone who takes
+it can sign a **new trust anchor**, and every client accepts the replacement as a
+legitimate rotation. There is no move left after that.
+
+Split, the online key signs `snapshot`, `targets` and `timestamp` — enough to publish a
+release, not enough to change who is trusted. A CI compromise is then bounded: revoke the
+online key, sign a rotation with the offline root key, and installed clients migrate
+without reinstalling. `packpub check-anchor` fails if the two ever overlap, so the
+property is checked rather than remembered.
+
 ## Prerequisites
 
 `tuftool` on PATH. The ceremony itself needs nothing else — unlike fixture generation, it
@@ -28,38 +41,39 @@ cd scripts/go && go run ./cmd/ensure tuftool
 
 ## Ceremony
 
-One command. It creates the anchor and the signing key, checks the result, and writes
-nothing unless every check passes.
+One command. It creates the anchor and both keys, checks the result, and writes nothing
+unless every check passes.
 
 ```bash
 cd scripts/py && uv run packpub ceremony
 ```
 
-Defaults: the anchor is written to `app/src-tauri/tuf/root.json`, the key to
-`~/packpub-signing-key.pem`, RSA 4096, one year to expiry, threshold 1 on all four roles.
-Override with `--anchor`, `--key-out`, `--bits`, `--root-days`.
+Defaults: the anchor is written to `app/src-tauri/tuf/root.json`, the root key to
+`~/packpub-root-key.pem` and the online key to `~/packpub-signing-key.pem`, RSA 4096, one
+year to expiry, threshold 1 on all four roles. Override with `--anchor`, `--root-key-out`,
+`--key-out`, `--bits`, `--root-days`.
 
 The command refuses to run if the anchor already exists (replacing a trust anchor is
-[rotation](#rotation), not a ceremony), and refuses a `--key-out` inside the checkout,
+[rotation](#rotation), not a ceremony), and refuses either key path inside the checkout,
 where one `git add -A` would publish it.
 
 Then, in order — this part is deliberately manual, because custody cannot be automated:
 
-1. **Store the private key** in the operator's password manager, as a file attachment or
+1. **Store the root key** in the operator's password manager, as a file attachment or
    full text, and verify you can read it back. This is the only copy. Losing it means
    every installed client must be reinstalled to accept a new anchor.
-2. **Add the CI secret**, from the path the command printed:
+2. **Add the CI secret** — the *online* key, never the root key:
    ```bash
    gh secret set PACKPUB_SIGNING_KEY < ~/packpub-signing-key.pem
    ```
    Or by hand: repository → Settings → Secrets and variables → Actions → New repository
    secret, named `PACKPUB_SIGNING_KEY`, containing the full PEM including the
    `-----BEGIN`/`-----END` lines.
-3. **Delete the key file**, then **commit the anchor**. It contains only public keys and
+3. **Delete both key files**, then **commit the anchor**. It contains only public keys and
    role definitions — safe to commit, and it must be committed, because it is what ships
    inside the binary.
    ```bash
-   rm ~/packpub-signing-key.pem
+   rm ~/packpub-root-key.pem ~/packpub-signing-key.pem
    git add app/src-tauri/tuf/root.json
    ```
 
@@ -73,26 +87,51 @@ cd scripts/py && uv run packpub check-anchor
 ```
 
 Reports version, expiry, key count, and each role's threshold; exits non-zero if the
-anchor is expired, unsigned, inside the 30-day renewal margin, under-keyed, or references
-a key it does not carry. This is the check behind the calendar reminder below.
+anchor is expired, unsigned, inside the 30-day renewal margin, under-keyed, references a
+key it does not carry, or lets one key sign both root and online roles. This is the check
+behind the calendar reminder below.
 
 ## Rotation
 
 Rotation is why the format was chosen: clients migrate without reinstalling, provided the
-new root is signed by the *previous* key as well as the new one.
+new root is signed by the root key(s) the old root already trusted. Which key you are
+replacing changes the procedure.
+
+### Rotating the online key (the common case)
+
+Do this when the CI secret is compromised or as periodic hygiene. The trust anchor's root
+key is unchanged, so it alone re-signs — and this is exactly the recovery the split
+exists for.
 
 ```bash
-tuftool root remove-key "$root" <old-key-id>
-tuftool root gen-rsa-key "$root" "$new_key" --role root --role snapshot \
-  --role targets --role timestamp --bits 4096
+tuftool root remove-key "$root" <old-online-key-id>
+tuftool root gen-rsa-key "$root" "$new_online_key" \
+  --role snapshot --role targets --role timestamp --bits 4096
 tuftool root bump-version "$root"
 tuftool root expire "$root" "$(date -u -d '+1 year' +%Y-%m-%dT%H:%M:%SZ)"
-tuftool root sign "$root" -k "$new_key" -k "$old_key"   # both signatures required
+tuftool root sign "$root" -k "$root_key"    # the offline root key, retrieved for this
 ```
 
-Publish the new `root.json` with the next release, update the committed anchor, and
-replace the `PACKPUB_SIGNING_KEY` secret. Clients holding the old root accept the new one
-because the old key signed it; fresh installs bootstrap from the embedded copy.
+Then replace the `PACKPUB_SIGNING_KEY` secret and publish. An attacker holding the old
+online key can no longer sign anything clients will accept.
+
+### Rotating the root key
+
+Only for root-key compromise or expiry. The new root must carry **both** signatures, or
+clients holding the old anchor reject it.
+
+```bash
+tuftool root remove-key "$root" <old-root-key-id>
+tuftool root gen-rsa-key "$root" "$new_root_key" --role root --bits 4096
+tuftool root bump-version "$root"
+tuftool root expire "$root" "$(date -u -d '+1 year' +%Y-%m-%dT%H:%M:%SZ)"
+tuftool root sign "$root" -k "$new_root_key" -k "$old_root_key"
+```
+
+Either way: publish the new `root.json` with the next release and update the committed
+anchor. Clients holding the old root accept the new one because a key it already trusted
+signed it; fresh installs bootstrap from the embedded copy. Run `packpub check-anchor`
+before committing — it catches a rotation that collapsed the two keys back into one.
 
 ## Expiry maintenance
 

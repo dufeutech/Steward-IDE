@@ -62,8 +62,15 @@
       key (`PACKS_DEPLOY_KEY`), and the first-publish path no longer depends on a failed
       checkout's leftovers. Operator half written up in
       `docs/runbooks/pack-publishing.md`.
-- [ ] 4.2 Run the ceremony (`packpub ceremony`); commit the anchor; store the online key
-      as `PACKPUB_SIGNING_KEY` (user action; ceremony runbook).
+- [x] 4.1d Split the root key from the online key (ADR in design.md). The first ceremony
+      put one key in all four roles and that key went to CI, which made a CI compromise
+      unrecoverable — the stolen key could sign a new anchor. `packpub ceremony` now emits
+      two keys, only the root key signs `root.json`, and `check-anchor` fails on any
+      overlap. Tests cover the invariant; a CI job runs them.
+- [ ] 4.2 Re-run the ceremony (`packpub ceremony`) now that it splits the keys; commit the
+      new anchor; store the *online* key as `PACKPUB_SIGNING_KEY`, the root key offline
+      (user action; ceremony runbook). The single-key anchor committed in 5bd783d must be
+      replaced — `check-anchor` rejects it.
 - [ ] 4.3 Hosting setup: create `dufeutech/steward-packs` public with an initial commit,
       add the write-scoped deploy key as `PACKS_DEPLOY_KEY`, enable Pages on `main:/`
       (user action; publishing runbook §1).
