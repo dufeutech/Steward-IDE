@@ -112,6 +112,23 @@ def test_anchor_inside_the_renewal_margin_is_rejected():
     assert any("renewal margin" in problem for problem in report.problems)
 
 
+def test_margin_leaves_time_for_a_manual_ceremony():
+    """Two months' notice must already be a warning, not still-fine.
+
+    Renewing means retrieving an offline key and signing by hand, and the weekly
+    watch is the only thing that will mention it. Under the old 30-day margin this
+    anchor read as healthy right up to the point where the ceremony was urgent.
+    """
+    two_months_out = (NOW + timedelta(days=60)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    report = inspect_anchor(
+        anchor(root_keys=[ROOT_KEY], online_keys=[ONLINE_KEY], expires=two_months_out),
+        CeremonyPlan(),
+        NOW,
+    )
+    assert not report.ok
+    assert any("renewal margin" in problem for problem in report.problems)
+
+
 def test_role_referencing_an_absent_key_is_rejected():
     document = anchor(root_keys=[ROOT_KEY], online_keys=[ONLINE_KEY])
     del document["signed"]["keys"][ONLINE_KEY]

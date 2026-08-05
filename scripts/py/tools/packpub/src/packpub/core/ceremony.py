@@ -29,9 +29,18 @@ from packpub import PackError
 ROOT_ROLES: tuple[str, ...] = ("root",)
 ONLINE_ROLES: tuple[str, ...] = ("snapshot", "targets", "timestamp")
 
-# Below this, a root nearing expiry is a latent outage: an expired anchor makes
-# clients refuse every update, and only a new binary restores them.
-RENEW_MARGIN_DAYS = 30
+# Below this, a root nearing expiry is a latent outage: once the published anchor
+# expires, clients refuse every update until a newer one is published.
+#
+# Recovery is publishing a new root, not shipping a new binary — clients walk
+# `N+1.root.json` forward from whatever they have and only enforce expiry on the
+# newest one they reach (TUF 5.3.6). A new binary is required only if the root key
+# is gone, because then nothing can sign the next link.
+#
+# 90 days, not 30: renewing means retrieving an offline key and running a ceremony
+# by hand. Thirty days' notice on a once-a-year manual task is a deadline, not a
+# warning.
+RENEW_MARGIN_DAYS = 90
 
 
 def _parse_expiry(raw: str) -> datetime | None:
