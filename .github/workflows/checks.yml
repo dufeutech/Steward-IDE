@@ -56,6 +56,18 @@ jobs:
       - run: go vet ./...
       - run: go build -o bin/ ./...
 
+  python:
+    name: python (packpub tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+      # Pure-core tests, chiefly the trust-anchor invariants: an anchor whose CI key
+      # can also sign a new root is the one failure no later check can recover from.
+      - name: Run packpub tests
+        working-directory: scripts/py
+        run: uv run --package packpub pytest tools/packpub/tests -q
+
   docs:
     name: docs (link check)
     runs-on: ubuntu-latest
