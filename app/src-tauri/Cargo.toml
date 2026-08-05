@@ -26,7 +26,11 @@ serde_json = "1"
 sha2 = "0.10"
 jsonschema = "0.33"
 semver = { version = "1", features = ["serde"] }
-tough = "0.24"
+# `http` is off by default and the updater's endpoint is https — without it the
+# default transport rejects the URL scheme outright and no release can ever be
+# fetched. The fixture tests load over `file://`, which needs no feature, so
+# nothing caught this until the app ran against the real endpoint.
+tough = { version = "0.24", features = ["http"] }
 
 [dev-dependencies]
 tempfile = "3"
