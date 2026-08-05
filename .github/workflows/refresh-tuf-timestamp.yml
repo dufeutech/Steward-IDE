@@ -1,0 +1,94 @@
+# Re-signs timestamp metadata on a schedule.
+#
+# TUF's freeze defense works by expiry: clients treat metadata past its expiry as
+# unavailable-and-stale rather than up-to-date. That means a publisher with
+# nothing to release must still re-sign, or its own quiet period looks to clients
+# exactly like an attacker withholding updates. Timestamp expiry is 14 days and
+# this runs weekly, so one missed run is recoverable before clients notice.
+name: refresh-tuf-timestamp
+
+on:
+  schedule:
+    - cron: "17 4 * * 1" # Mondays, 04:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TUF_SUBDIR: tuf
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check out the published branch
+        uses: actions/checkout@v5
+        with:
+          ref: gh-pages
+          path: published
+
+      - name: Stop if nothing has been published yet
+        id: guard
+        run: |
+          if [ -f "published/$TUF_SUBDIR/metadata/timestamp.json" ]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "no published repository yet — nothing to refresh"
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: astral-sh/setup-uv@v7
+        if: steps.guard.outputs.proceed == 'true'
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.guard.outputs.proceed == 'true'
+
+      - name: Cache tuftool
+        if: steps.guard.outputs.proceed == 'true'
+        id: tuftool-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/tuftool
+          key: tuftool-${{ runner.os }}-v1
+
+      - name: Install tuftool
+        if: steps.guard.outputs.proceed == 'true' && steps.tuftool-cache.outputs.cache-hit != 'true'
+        run: cd scripts/go && go run ./cmd/ensure tuftool --method cargo
+
+      - name: Re-sign timestamp
+        if: steps.guard.outputs.proceed == 'true'
+        working-directory: scripts/py
+        env:
+          PACKPUB_SIGNING_KEY: ${{ secrets.PACKPUB_SIGNING_KEY }}
+        run: |
+          metadata="../../published/$TUF_SUBDIR/metadata"
+          next=$(( $(jq -r '.signed.version' "$metadata/timestamp.json") + 1 ))
+          uv run packpub refresh ../../refreshed \
+            --root-json ../../app/src-tauri/tuf/root.json \
+            --metadata-url "file://$(realpath "$metadata")/" \
+            --version "$next"
+
+      - name: Publish the refreshed metadata
+        if: steps.guard.outputs.proceed == 'true'
+        run: |
+          cp refreshed/*.json "published/$TUF_SUBDIR/metadata/"
+          cd published
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "refresh TUF timestamp" || { echo "timestamp unchanged"; exit 0; }
+          git push origin HEAD:gh-pages
+
+      # GitHub disables scheduled workflows in repositories with no activity for
+      # 60 days. This keeps the schedule alive in a quiet repository, which is
+      # precisely the situation the refresh exists for.
+      - name: Keep the schedule alive
+        if: always()
+        run: |
+          gh api -X PUT "repos/${{ github.repository }}/actions/workflows/refresh-tuf-timestamp.yml/enable" || true
+        env:
+          GH_TOKEN: ${{ github.token }}

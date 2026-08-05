@@ -1,0 +1,67 @@
+# The commands in this file are the ones in .canon/checks.md (Rule 6). If a check
+# changes there, change it here — that file is the single source of truth.
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: rust (fmt, clippy, test, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app/src-tauri
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+
+      - run: cargo fmt --check
+      - run: cargo clippy -- -D warnings
+
+      # Includes the TUF end-to-end tests: they read the committed fixture
+      # repository over file:// URLs, so no secrets and no network are involved.
+      - run: cargo test
+      - run: cargo build
+
+  go:
+    name: go (vet, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scripts/go
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache-dependency-path: scripts/go/go.sum
+      - run: go vet ./...
+      - run: go build -o bin/ ./...
+
+  docs:
+    name: docs (link check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+      - name: Check relative Markdown links
+        working-directory: scripts/py
+        run: uv run --package mdlinks mdlinks ../..
