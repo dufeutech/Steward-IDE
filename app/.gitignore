@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# The bootstrap pack's payload is committed source, not a build output: it is
+# first-party, has no build step, and a recovery surface that must be reconstructed
+# before it works is not a recovery surface.
+!src-tauri/packs-baseline/bootstrap/dist/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

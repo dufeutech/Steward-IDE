@@ -1,0 +1,25 @@
+{
+  "format_version": 1,
+  "id": "pack:assets.bootstrap",
+  "version": "0.1.0",
+  "files": [
+    {
+      "path": "dist/bootstrap.css",
+      "size": 1642,
+      "sha256": "5b7a2a64028a4017b640cc6c5468035b0470eb83adda55c6d6b32f4a5bd04016"
+    },
+    {
+      "path": "dist/bootstrap.js",
+      "size": 4887,
+      "sha256": "a34c0bc441831ab6bf8c745ef6bc3cfb1b915dd8e044be3d46e7544406d2799d"
+    }
+  ],
+  "entry": {
+    "scripts": [
+      "dist/bootstrap.js"
+    ],
+    "styles": [
+      "dist/bootstrap.css"
+    ]
+  }
+}
