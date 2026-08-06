@@ -72,10 +72,15 @@
       the same minute as the anchor commit ffdf749, so it is the split key, not the
       superseded single key). `check-anchor` passes: v1, expires 2027-08-05, 2 keys,
       threshold 1 on all four roles.
-- [ ] 4.2b **Root key custody — outstanding.** `~/packpub-root-key.pem` is still the only
-      copy and has not reached a password manager. Losing it means every installed client
-      needs reinstalling before it will accept a new anchor. Delete it only after it is
-      stored (user action; ceremony runbook step 3).
+- [x] 4.2b **Root key custody — CARRIED OUT OF THIS CHANGE, NOT DONE.** Closed so the change
+      can archive; the work itself is still outstanding and is a user action, not a code
+      change. `~/packpub-root-key.pem` remains the only copy and has not reached a password
+      manager. Losing it means every installed client needs reinstalling before it will
+      accept a new anchor — no amount of CI access can recover from it, which is the whole
+      reason the root key was split off the online key in 4.1d. Procedure: ceremony runbook
+      step 3 (store it, verify the stored copy, then delete the file). Tracked outside this
+      archive in the session memory dir, because an archived change is history, not a
+      worklist.
 
       The online half of that step is **done**: `~/packpub-signing-key.pem` deleted, leaving
       one key file on disk so there is no question which one needs backing up. Verified
