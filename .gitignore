@@ -288,8 +288,10 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # ============================================
 # Steward IDE
 # ============================================
-# Baseline pack payloads: 34 MB of generated npm artifacts, pinned by the committed
-# manifest.json beside them. See app/src-tauri/packs-baseline/README.md to regenerate.
+# Baseline pack payloads, pinned by the committed manifest.json beside them. The one
+# payload that lives here today — the bootstrap surface — is committed source and is
+# re-included by app/.gitignore; this pattern covers any generated payload placed here
+# later. See app/src-tauri/packs-baseline/README.md.
 app/src-tauri/packs-baseline/*/dist/
 
 # ============================================
