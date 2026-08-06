@@ -5,11 +5,11 @@ in [`.canon/checks.md`](.canon/checks.md), which is their one home.
 
 ## Prerequisites
 
-| Need                | Check                 | Notes                                                        |
-| ------------------- | --------------------- | ------------------------------------------------------------ |
-| Node                | `node -v`             | Only to run the Tauri CLI; there is no frontend build step.  |
-| Rust                | `cargo -V`            | The app *is* the Rust crate under `app/src-tauri/`.          |
-| WebView2 (Windows)  | ships with Windows 11 | Linux needs `webkit2gtk`; macOS needs Xcode command-line tools. |
+| Need               | Check                 | Notes                                                           |
+| ------------------ | --------------------- | --------------------------------------------------------------- |
+| Node               | `node -v`             | Only to run the Tauri CLI; there is no frontend build step.     |
+| Rust               | `cargo -V`            | The app _is_ the Rust crate under `app/src-tauri/`.             |
+| WebView2 (Windows) | ships with Windows 11 | Linux needs `webkit2gtk`; macOS needs Xcode command-line tools. |
 
 No bundler, no dev server, no TypeScript toolchain. `tauri.conf.json` points `frontendDist`
 at `app/src-tauri/shell/`, which is served as-is.
@@ -44,10 +44,10 @@ Useful console lines (the terminal running `tauri dev`, not the webview):
 | Line                                               | Means                                       |
 | -------------------------------------------------- | ------------------------------------------- |
 | `updater: xkin@<version> activated (pending boot)` | fetched, verified, staged, activated        |
-| *(silence)*                                        | the published version is already active     |
+| _(silence)_                                        | the published version is already active     |
 | `updater: xkin: TUF load/verify: ...`              | endpoint unreachable, or signature mismatch |
 
-An activation stays *pending* until the shell reports a successful boot; a failed boot rolls
+An activation stays _pending_ until the shell reports a successful boot; a failed boot rolls
 it back on the next start.
 
 ## Running against a local endpoint (offline / no published release)
@@ -67,11 +67,11 @@ keys and rejects real releases.
 The content store and TUF metadata cache live outside the checkout, so `cargo clean` does not
 touch them:
 
-| OS      | Path                                       |
-| ------- | ------------------------------------------ |
-| Windows | `%APPDATA%\com.steward.ide\`               |
+| OS      | Path                                             |
+| ------- | ------------------------------------------------ |
+| Windows | `%APPDATA%\com.steward.ide\`                     |
 | macOS   | `~/Library/Application Support/com.steward.ide/` |
-| Linux   | `~/.local/share/com.steward.ide/`          |
+| Linux   | `~/.local/share/com.steward.ide/`                |
 
 Delete `packs/` and `tuf-datastore/` under that directory and the next launch behaves like a
 first run: bootstrap surface, download, activation. This is the only way to exercise the
