@@ -88,9 +88,13 @@ config every installed client reads. Get them right once.
 ## 2. Publish a release
 
 A release is whatever the committed manifest pins. Update
-`app/src-tauri/packs-baseline/<pack>/manifest.json` and merge that first — the workflow
-fetches the origin the manifest records and verifies the payload against it before
-anything is signed, so the repository stays the source of truth about what is live.
+`app/packs/<pack>/manifest.json` and merge that first — the workflow fetches the origin
+the manifest records and verifies the payload against it before anything is signed, so
+the repository stays the source of truth about what is live.
+
+That manifest lives outside `app/src-tauri/`: it is publisher input, not something the
+binary carries. The binary embeds only the bootstrap recovery surface, so a new install
+has no application content until this endpoint serves it.
 
 ```bash
 gh workflow run publish-pack.yml -f pack=xkin
@@ -167,8 +171,49 @@ Then run the app and read the console. Success looks like one of:
 An update that lands stays *pending* until the shell boots successfully; a boot failure
 rolls it back automatically and the previous version reactivates.
 
-**Rollback**: delete the `update` block. Clients fall back to store-then-baseline
-resolution, which never depends on the endpoint being reachable.
+**Rollback**: delete the `update` block. Clients keep serving whatever their store already
+holds. Note what this no longer means: a client that has never acquired content has
+nothing to fall back to and stays on the bootstrap surface, because the binary embeds no
+application pack. Rollback protects existing installs, not new ones.
+
+## Running against a local endpoint (development)
+
+Since the binary embeds no application pack, a development build reaches the bootstrap
+surface and stops there until something serves it content. `tough` serves `file://`
+through its default transport and the app performs no scheme validation, so a local
+signed repository on disk is a complete endpoint — no server, no HTTPS, no ports.
+
+```bash
+# 1. Fetch the pinned payload (the only step that needs the network).
+cd scripts/py && uv run --package packpub packpub baseline ../../app/packs/xkin
+
+# 2. Throwaway keys and a dev anchor. Never the production key: publishing locally
+#    means signing locally.
+uv run --package packpub packpub ceremony \
+  --anchor /tmp/dev/root.json --key-out /tmp/dev/key.pem \
+  --root-key-out /tmp/dev/root-key.pem --bits 2048
+
+# 3. Sign a repository through the same publish path CI uses.
+PACKPUB_SIGNING_KEY="$(cat /tmp/dev/key.pem)" uv run --package packpub packpub publish \
+  ../../app/packs/xkin/manifest.json ../../app/packs/xkin /tmp/dev/repo \
+  --root-json /tmp/dev/root.json --version 1 --segment xkin
+```
+
+Then point the app at it, **locally and uncommitted**:
+
+- `app/src-tauri/config/app.config.json` → `update.metadata_url` and `targets_url` to
+  `file:///tmp/dev/repo/metadata/` and `file:///tmp/dev/repo/targets/` (trailing slashes
+  matter).
+- `app/src-tauri/tuf/root.json` → the dev anchor from step 2. The app verifies against
+  the anchor it ships with, so a locally-signed repository needs the matching root.
+
+Both are tracked files. Revert them before committing — a dev anchor merged to `main`
+would ship a binary that trusts throwaway keys and rejects real releases.
+
+`packpub publish` shells out to `tuftool`, which places targets with symlinks. Windows
+refuses that without Developer Mode or elevation, so run steps 2–3 under Linux, macOS,
+WSL, or the container command in the fixture README — the same constraint
+`app/src-tauri/tests/fixtures/regenerate.sh` documents.
 
 ## Ongoing
 
