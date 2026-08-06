@@ -2,28 +2,45 @@
 
 ## Purpose
 
-Regenerate the embedded baseline pack from its recorded external origin in one verified step, so a fresh clone reaches a bootable state without a manual checklist and without ever adopting a payload that drifted from the committed manifest.
+Regenerate the embedded pack in one verified step, so a fresh clone reaches a bootable state without a manual checklist, without reaching any external origin, and without ever adopting a payload that drifted from the committed manifest.
 
 ## Requirements
 
 ### Requirement: A fresh clone reaches a bootable baseline with one command
-Regenerating the embedded baseline pack MUST be a single tool invocation that fetches
-the pack payload from its recorded external origin, places it in the baseline location,
-and verifies every file against the committed baseline manifest. No manual multi-step
-checklist may be required.
+Regenerating the embedded pack MUST be a single tool invocation that produces its payload
+from first-party source in this repository, places it in the embedded location, and verifies
+every file against the committed manifest. Reaching a bootable state MUST NOT require
+fetching from any external origin, and no manual multi-step checklist may be required.
 
 #### Scenario: Fresh clone regeneration
-- **WHEN** the regeneration tool runs in a clone that has no baseline payload
-- **THEN** the payload is fetched from the origin recorded in the committed manifest, verified file-by-file against it, and the application boots from the baseline
+- **WHEN** the regeneration tool runs in a clone that has no embedded payload
+- **THEN** the payload is produced from in-repo source, verified file-by-file against the committed manifest, and the application boots from it with no network access
+
+#### Scenario: Regeneration with no external origin reachable
+- **WHEN** regeneration runs with every external origin unreachable
+- **THEN** it completes successfully, because the embedded payload has no external origin
 
 ### Requirement: A mismatched payload is refused, never adopted
-The tool MUST refuse a fetched payload that does not hash-match the committed baseline
-manifest, and report exactly which files mismatch. Updating the committed manifest MUST
-be a separate, explicit operation — never a side effect of regeneration.
+The tool MUST refuse a produced payload that does not hash-match the committed manifest, and
+report exactly which files mismatch. Updating the committed manifest MUST be a separate,
+explicit operation — never a side effect of regeneration.
 
-#### Scenario: Origin content drifted
-- **WHEN** the fetched payload contains a file whose hash differs from the committed manifest
-- **THEN** the tool reports the mismatching paths and exits without leaving the mismatched payload in place as a valid baseline
+#### Scenario: Produced payload drifted
+- **WHEN** the produced payload contains a file whose hash differs from the committed manifest
+- **THEN** the tool reports the mismatching paths and exits without leaving the mismatched payload in place as valid embedded content
+
+### Requirement: Development payloads never become embedded content
+Materializing an application pack payload locally for development MUST place it in the
+downloadable-content location, never in the embedded location, so that a development
+convenience cannot silently restore an embedded copy of application content.
+
+#### Scenario: Local materialization for development
+- **WHEN** an application pack payload is materialized locally for development
+- **THEN** it is resolvable as downloaded content and the embedded location is left unchanged
+
+#### Scenario: Validation after local materialization
+- **WHEN** validation runs in a tree where an application pack has been materialized locally
+- **THEN** the embedded size budget still measures only embedded content and remains satisfied
 
 ### Requirement: Manifest generation is deterministic and shared with publishing
 The manifest generation used for the baseline MUST be the same behavior used at publish

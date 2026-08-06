@@ -54,5 +54,19 @@
 - [x] 7.1 Update `docs/architecture/asset-pack-system.md` — the baseline node, the fallback chain's terminal candidate, and the first-run acquisition path (Rule 1: describe what is)
 - [x] 7.2 Correct the offline-boot claims in the operator-facing docs and runbooks
 - [x] 7.3 Run the full `.canon/checks.md` suite and report anything that could not be run as unverified
-- [ ] 7.4 Review the diff and split it into Conventional Commits by intent (Rule 3) — **awaiting the user**: nothing is committed yet
-- [ ] 7.5 Run `/opsx:sync` to fold the delta specs into the main specs
+- [x] 7.4 Review the diff and split it into Conventional Commits by intent (Rule 3) — eight
+      commits on branch `bootstrap-pack-boot`: the surface, the composition rule, the
+      acquisition events, the pin move, the budget test, the packpub guard, the docs, and
+      this record. Reviewing the diff found a defect nothing else would have: `app/.gitignore`
+      ignores `dist`, so the bootstrap payload would have been committed as manifest-only and
+      every fresh clone would have had an unusable embedded surface. Negated for that path,
+      with the reason in the file. Suite re-run after the split: fmt, `clippy --all-targets`,
+      53 Rust tests, 22 packpub tests, `go vet`/`go build`, mdlinks, markdown format,
+      `check-anchor`, and tokei (largest touched file `serving.rs` at 558 lines, inside the
+      300–600 band) all clean.
+- [x] 7.5 Run `/opsx:sync` to fold the delta specs into the main specs — `baseline-boot`,
+      `baseline-regen`, and `pack-update` modified in place; `bootstrap-shell` created as a
+      new capability. Each Purpose line was corrected alongside its requirements: a purpose
+      still promising a baseline "sufficient to reach the shell's ready state" would have
+      contradicted the requirements directly beneath it (Rule 8). `openspec validate --all
+      --strict` passes, 10/10.

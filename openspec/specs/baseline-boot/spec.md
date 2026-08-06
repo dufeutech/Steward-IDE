@@ -2,31 +2,42 @@
 
 ## Purpose
 
-Guarantee the application boots with no network, no prior state, or a corrupted store, from a baseline pack embedded in the binary.
+Guarantee the application reaches an interactive surface with no network, no prior state, or a corrupted store, from a pack embedded in the binary.
 
 ## Requirements
 
 ### Requirement: The app always boots without a network
-The application binary MUST embed a baseline pack sufficient to reach the shell's ready
-state. First launch, fully-offline launch, and launch with an empty store MUST all
-succeed using only embedded content.
+The application binary MUST embed a pack sufficient to reach an interactive surface with no
+network, no prior state, and an empty or unreadable store. The embedded pack is NOT required
+to be sufficient for the application's own ready state; when application content has not yet
+been acquired, the interactive surface MUST report that and why.
 
 #### Scenario: First launch offline
 - **WHEN** the app is launched for the first time with no network connectivity
-- **THEN** the shell reaches its ready state serving the baseline pack
+- **THEN** an interactive surface reaches its ready state from embedded content and reports that application content is unavailable
+
+#### Scenario: First launch with the endpoint reachable
+- **WHEN** the app is launched for the first time with the update endpoint reachable
+- **THEN** the app reaches an interactive surface without waiting for acquisition, and serves application content once a version becomes active, without requiring a restart
 
 ### Requirement: Downloaded packs take precedence over baseline
-When a verified downloaded pack version is active, it MUST be served instead of the
-baseline. The baseline remains the fallback of last resort and is never garbage
-collected.
+When a verified downloaded pack version is active, it MUST be served instead of embedded
+content. Embedded content remains the fallback of last resort and is never garbage
+collected. When no version of a pack can be resolved from the store and the binary embeds no
+copy of that pack, boot MUST fall through to the embedded bootstrap surface rather than
+failing to start.
 
 #### Scenario: Store corrupted
 - **WHEN** the pack store is corrupted or unreadable at startup
-- **THEN** the app boots from the baseline pack and reports the store failure in diagnostics
+- **THEN** the app boots from embedded content and reports the store failure in diagnostics
 
 #### Scenario: All retained versions fail
 - **WHEN** the active version fails to boot and the retained rollback version also fails
-- **THEN** the app boots from the baseline pack rather than failing to start
+- **THEN** the app boots from embedded content rather than failing to start
+
+#### Scenario: No downloaded version and no embedded copy
+- **WHEN** a pack has no resolvable version in the store and the binary embeds no copy of it
+- **THEN** the app boots to the embedded bootstrap surface, and the unresolved pack is reported in diagnostics rather than raised as a startup failure
 
 ### Requirement: Baseline is a pack like any other
 The baseline MUST be a normal pack (manifest, hashes, entry points) differing only in
@@ -36,3 +47,16 @@ identical for baseline and downloaded packs.
 #### Scenario: One resolution path
 - **WHEN** the shell loads assets from the baseline
 - **THEN** URLs, relative resolution, and tag generation behave identically to a downloaded pack, and no baseline-specific branch exists in the serving path
+
+### Requirement: Each pack declares whether the binary embeds a copy of it
+Configuration MUST record, per pack, whether an embedded copy exists. A pack declaring no
+embedded copy MUST resolve only from downloaded state, and the absence of embedded content
+for it MUST NOT be treated as a fault.
+
+#### Scenario: Pack declares no embedded copy
+- **WHEN** a pack declares no embedded copy and the store holds no version of it
+- **THEN** resolution yields no version for that pack, boot proceeds to the bootstrap surface, and no missing-content error is raised
+
+#### Scenario: Pack declares an embedded copy
+- **WHEN** a pack declares an embedded copy and the store holds no version of it
+- **THEN** the embedded copy is resolved and served, exactly as before
