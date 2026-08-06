@@ -20,6 +20,33 @@ pub fn plan_download<'m>(
         .collect()
 }
 
+/// How much of a release is already held locally (spec `pack-update`: acquisition
+/// progress is observable to the shell). Deduplicated by hash on the same grounds as
+/// `plan_download` — content shared between two paths is fetched and counted once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Progress {
+    pub done_bytes: u64,
+    pub total_bytes: u64,
+}
+
+pub fn progress(manifest: &Manifest, available: &HashMap<String, u64>) -> Progress {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Progress {
+        done_bytes: 0,
+        total_bytes: 0,
+    };
+    for file in &manifest.files {
+        if !seen.insert(file.sha256.as_str()) {
+            continue;
+        }
+        out.total_bytes += file.size;
+        if available.contains_key(&file.sha256) {
+            out.done_bytes += file.size;
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -64,5 +91,35 @@ mod tests {
         let m = manifest();
         let available = HashMap::from([("a".repeat(64), 1u64), ("b".repeat(64), 2u64)]);
         assert!(plan_download(&m, &available).is_empty());
+    }
+
+    #[test]
+    fn scenario_progress_reflects_what_remains_outstanding() {
+        let m = manifest();
+        assert_eq!(
+            progress(&m, &HashMap::new()),
+            Progress {
+                done_bytes: 0,
+                total_bytes: 3
+            },
+            "b's content counts once despite two entries"
+        );
+        assert_eq!(
+            progress(&m, &HashMap::from([("a".repeat(64), 1u64)])),
+            Progress {
+                done_bytes: 1,
+                total_bytes: 3
+            }
+        );
+        assert_eq!(
+            progress(
+                &m,
+                &HashMap::from([("a".repeat(64), 1u64), ("b".repeat(64), 2u64)])
+            ),
+            Progress {
+                done_bytes: 3,
+                total_bytes: 3
+            }
+        );
     }
 }

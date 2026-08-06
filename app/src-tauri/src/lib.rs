@@ -12,6 +12,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 /// `schemas/events.asyncapi.yaml` — keep the two in sync.
 const EVENT_PACK_ACTIVATED: &str = "event:assets.pack_activated";
 const EVENT_PACK_ROLLED_BACK: &str = "event:assets.pack_rolled_back";
+const EVENT_ACQUISITION_PROGRESSED: &str = "event:assets.acquisition_progressed";
+const EVENT_ACQUISITION_FAILED: &str = "event:assets.acquisition_failed";
 
 fn emit_pack_event(app: &AppHandle, event: &str, pack: &str, id: &str, version: &str) {
     let _ = app.emit(
@@ -53,6 +55,88 @@ fn shell_failed(app: AppHandle, state: State<ServeState>, error: String) {
     }
 }
 
+/// One acquisition pass over every application pack. Startup and the retry command share
+/// it, so a retry is the same operation rather than a second implementation of it
+/// (spec bootstrap-shell: retry re-attempts acquisition in the same session).
+async fn acquire_all(app: AppHandle) {
+    let state = app.state::<ServeState>();
+    let Some(endpoint) = state.update_endpoint().cloned() else {
+        return;
+    };
+    let root_path = state.tuf_root().to_path_buf();
+    let Ok(root_bytes) = std::fs::read(&root_path) else {
+        eprintln!("updater: no embedded TUF root at {root_path:?}; skipping");
+        return;
+    };
+    let Ok(datastore) = app.path().app_data_dir().map(|d| d.join("tuf-datastore")) else {
+        return;
+    };
+
+    for (pack, id) in state.application_pack_ids() {
+        let fail = |kind: &str, reason: String| {
+            eprintln!("updater: {pack}: {reason}");
+            let _ = app.emit(
+                EVENT_ACQUISITION_FAILED,
+                serde_json::json!({"pack": &pack, "id": &id, "kind": kind, "reason": reason}),
+            );
+        };
+
+        let source = match adapters::tuf_source::TufSource::load(
+            &root_bytes,
+            &endpoint.metadata_url,
+            &endpoint.targets_url,
+            &datastore.join(&pack),
+            &pack,
+        )
+        .await
+        {
+            Ok(s) => s,
+            // Nothing was reached or what was reached did not verify; either way the
+            // client never got usable release metadata.
+            Err(e) => {
+                fail("transport", e.to_string());
+                continue;
+            }
+        };
+
+        let on_progress = |p: core::updater::Progress| {
+            let _ = app.emit(
+                EVENT_ACQUISITION_PROGRESSED,
+                serde_json::json!({
+                    "pack": &pack, "id": &id,
+                    "done_bytes": p.done_bytes, "total_bytes": p.total_bytes
+                }),
+            );
+        };
+
+        use adapters::updater::{run_update, UpdateOutcome};
+        match run_update(
+            state.store(),
+            state.manifest_schema(),
+            &source,
+            &pack,
+            &on_progress,
+        )
+        .await
+        {
+            UpdateOutcome::Activated { version } => {
+                println!("updater: {pack}@{version} activated (pending boot)");
+                state.invalidate(&pack);
+                emit_pack_event(&app, EVENT_PACK_ACTIVATED, &pack, &id, &version);
+            }
+            UpdateOutcome::UpToDate => {}
+            UpdateOutcome::Failed { kind, reason } => fail(kind.as_str(), reason),
+        }
+    }
+}
+
+/// Retry acquisition without restarting (spec bootstrap-shell). Thin: it starts the same
+/// pass startup runs and carries no logic of its own.
+#[tauri::command]
+fn retry_acquisition(app: AppHandle) {
+    tauri::async_runtime::spawn(acquire_all(app));
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -79,63 +163,10 @@ pub fn run() {
 
             app.manage(state);
 
-            // Background update check (spec pack-update: never blocks startup; any
-            // failure leaves the current version serving). Enabled only when the
-            // config names an endpoint AND the embedded TUF root exists.
-            let app_handle = app.handle().clone();
-            let root_path = resource_root.join("tuf/root.json");
-            tauri::async_runtime::spawn(async move {
-                let state = app_handle.state::<ServeState>();
-                let Some(endpoint) = state.update_endpoint().cloned() else {
-                    return;
-                };
-                let Ok(root_bytes) = std::fs::read(&root_path) else {
-                    eprintln!("updater: no embedded TUF root at {root_path:?}; skipping");
-                    return;
-                };
-                let Ok(datastore) = app_handle
-                    .path()
-                    .app_data_dir()
-                    .map(|d| d.join("tuf-datastore"))
-                else {
-                    return;
-                };
-                for (pack, id) in state.pack_ids() {
-                    let source = match adapters::tuf_source::TufSource::load(
-                        &root_bytes,
-                        &endpoint.metadata_url,
-                        &endpoint.targets_url,
-                        &datastore.join(&pack),
-                        &pack,
-                    )
-                    .await
-                    {
-                        Ok(s) => s,
-                        Err(e) => {
-                            eprintln!("updater: {pack}: {e}");
-                            continue;
-                        }
-                    };
-                    use adapters::updater::{run_update, UpdateOutcome};
-                    match run_update(state.store(), state.manifest_schema(), &source, &pack).await {
-                        UpdateOutcome::Activated { version } => {
-                            println!("updater: {pack}@{version} activated (pending boot)");
-                            state.invalidate(&pack);
-                            emit_pack_event(
-                                &app_handle,
-                                EVENT_PACK_ACTIVATED,
-                                &pack,
-                                &id,
-                                &version,
-                            );
-                        }
-                        UpdateOutcome::UpToDate => {}
-                        UpdateOutcome::Failed { reason } => {
-                            eprintln!("updater: {pack}: {reason}");
-                        }
-                    }
-                }
-            });
+            // Background acquisition (spec pack-update: never blocks startup). With no
+            // active version this is also what fills a fresh install, so the bootstrap
+            // surface renders first and watches it happen.
+            tauri::async_runtime::spawn(acquire_all(app.handle().clone()));
             Ok(())
         })
         .register_uri_scheme_protocol("pack", |ctx, request| {
@@ -155,7 +186,11 @@ pub fn run() {
                 .body(body)
                 .expect("static response parts are always valid")
         })
-        .invoke_handler(tauri::generate_handler![shell_ready, shell_failed])
+        .invoke_handler(tauri::generate_handler![
+            shell_ready,
+            shell_failed,
+            retry_acquisition
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

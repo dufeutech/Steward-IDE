@@ -19,6 +19,16 @@ channels:
     messages:
       packRolledBack:
         $ref: "#/components/messages/packLifecycle"
+  acquisition_progressed:
+    address: "event:assets.acquisition_progressed"
+    messages:
+      acquisitionProgressed:
+        $ref: "#/components/messages/acquisitionProgress"
+  acquisition_failed:
+    address: "event:assets.acquisition_failed"
+    messages:
+      acquisitionFailed:
+        $ref: "#/components/messages/acquisitionFailure"
 
 operations:
   onPackActivated:
@@ -29,6 +39,14 @@ operations:
     action: receive
     channel:
       $ref: "#/channels/pack_rolled_back"
+  onAcquisitionProgressed:
+    action: receive
+    channel:
+      $ref: "#/channels/acquisition_progressed"
+  onAcquisitionFailed:
+    action: receive
+    channel:
+      $ref: "#/channels/acquisition_failed"
 
 components:
   messages:
@@ -50,3 +68,58 @@ components:
           version:
             type: string
             description: SemVer of the version this fact concerns (for rollback, the restored version).
+    acquisitionProgress:
+      name: acquisitionProgress
+      title: Content acquisition advanced
+      summary: >
+        How much of a release remains outstanding. Emitted while acquisition runs so a
+        surface can reflect it without polling the store.
+      payload:
+        type: object
+        required: [pack, id, done_bytes, total_bytes]
+        additionalProperties: false
+        properties:
+          pack:
+            type: string
+            description: Store key and URL segment (e.g. "xkin").
+          id:
+            type: string
+            pattern: "^pack:[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+            description: Registry identifier (Rule 11).
+          done_bytes:
+            type: integer
+            minimum: 0
+            description: Bytes of this release already held locally.
+          total_bytes:
+            type: integer
+            minimum: 0
+            description: Bytes the release comprises in total.
+    acquisitionFailure:
+      name: acquisitionFailure
+      title: Content acquisition ended in failure
+      summary: >
+        A terminal outcome carrying why. The kind distinguishes a transport or endpoint
+        failure from content refused by verification — a surface must be able to tell a
+        broken network from refused content.
+      payload:
+        type: object
+        required: [pack, id, kind, reason]
+        additionalProperties: false
+        properties:
+          pack:
+            type: string
+            description: Store key and URL segment (e.g. "xkin").
+          id:
+            type: string
+            pattern: "^pack:[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+            description: Registry identifier (Rule 11).
+          kind:
+            type: string
+            enum: [transport, verification, local]
+            description: >
+              transport = the endpoint was unreachable or unusable;
+              verification = content was reached but refused as unverified;
+              local = neither — the local store could not be read or written.
+          reason:
+            type: string
+            description: Human-readable detail, for diagnostics.

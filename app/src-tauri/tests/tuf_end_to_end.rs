@@ -103,7 +103,7 @@ async fn scenario_client_accepts_what_the_publisher_produced() {
         .await
         .expect("fixture repository verifies against its own root");
 
-    let outcome = run_update(&store, &schema(), &source, PACK).await;
+    let outcome = run_update(&store, &schema(), &source, PACK, &|_| {}).await;
 
     assert_eq!(
         outcome,
@@ -136,9 +136,10 @@ async fn scenario_tampered_blob_is_rejected() {
         // Rejection may surface at load or at fetch, depending on which file was hit;
         // either way nothing may be activated.
         Err(_) => UpdateOutcome::Failed {
+            kind: steward_ide_lib::adapters::updater::FailureKind::Verification,
             reason: "repository rejected at load".into(),
         },
-        Ok(source) => run_update(&store, &schema(), &source, PACK).await,
+        Ok(source) => run_update(&store, &schema(), &source, PACK, &|_| {}).await,
     };
 
     assert!(
