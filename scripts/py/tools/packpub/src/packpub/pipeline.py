@@ -21,6 +21,10 @@ from packpub.core.origin import parse_npm_purl
 
 MANIFEST_NAME = "manifest.json"
 
+# The directory the application binary bundles as embedded pack content. Only the
+# first-party bootstrap surface belongs there (change bootstrap-pack-boot).
+EMBEDDED_DIRNAME = "packs-baseline"
+
 # `manifest.json` at a payload root is the pack's own description, never pack
 # content — the baseline layout stores it there, and the client's staged blob set
 # excludes it the same way. The name is reserved by that convention, so the rule
@@ -90,7 +94,17 @@ def regenerate_baseline(pack_dir: Path, registry: str = npm.REGISTRY) -> Baselin
     The committed manifest drives everything — identity, origin, and the file
     list — so regeneration cannot quietly adopt different content than what is
     pinned. Verification runs against what was actually placed.
+
+    Refuses the binary's embedded location: materializing an application payload
+    there is what made the app ship its content and then download it again
+    (spec baseline-regen).
     """
+    if EMBEDDED_DIRNAME in pack_dir.resolve().parts:
+        raise PackError(
+            f"{pack_dir} is inside {EMBEDDED_DIRNAME}/, which the binary embeds — a fetched "
+            "application payload belongs in the downloadable-content location, never in the "
+            "bundle. Materialize it elsewhere and publish it."
+        )
     manifest_path = pack_dir / MANIFEST_NAME
     document = load_manifest(manifest_path)
     schema.validate(document)
