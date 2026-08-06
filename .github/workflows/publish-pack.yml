@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       pack:
-        description: Baseline pack directory name (under app/src-tauri/packs-baseline/)
+        description: Pack directory name (under app/packs/), holding the committed manifest
         required: true
         default: xkin
 
@@ -25,7 +25,9 @@ permissions:
   contents: read
 
 env:
-  PACK_DIR: app/src-tauri/packs-baseline/${{ inputs.pack }}
+  # The pinned manifest lives outside the app's bundled resources: it is what the
+  # repository publishes, not something the binary carries (change bootstrap-pack-boot).
+  PACK_DIR: app/packs/${{ inputs.pack }}
   # The public repository GitHub Pages serves the signed tree from.
   PACKS_REPO: dufeutech/steward-packs
   PACKS_BRANCH: main
