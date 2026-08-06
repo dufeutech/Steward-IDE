@@ -5,7 +5,13 @@
     {
       "pack": "xkin",
       "id": "pack:assets.xkin",
-      "baseline_version": "0.1.0"
+      "role": "application"
+    },
+    {
+      "pack": "bootstrap",
+      "id": "pack:assets.bootstrap",
+      "role": "bootstrap",
+      "embedded_version": "0.1.0"
     }
   ],
   "update": {

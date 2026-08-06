@@ -2,6 +2,10 @@
 // enforced CSP (script-src 'self'). Everything heavy comes from the asset packs.
 window.addEventListener("DOMContentLoaded", () => {
   const status = document.getElementById("status");
+  // The shell hosts whichever surface the core composed. The bootstrap pack owns its own
+  // surface and its own boot signalling; driving the application pack is this file's only
+  // job, so it stands down rather than inferring anything from a missing global.
+  if (document.body.dataset.composition !== "application") return;
   try {
     const editor = Xkin.editor({
       element: document.getElementById("editor"),

@@ -13,7 +13,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 use crate::adapters::fs_store::FsStore;
-use crate::core::{self, Manifest};
+use crate::core::{self, Manifest, PackConfig};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppConfig {
@@ -29,15 +29,6 @@ pub struct AppConfig {
 pub struct UpdateEndpoint {
     pub metadata_url: String,
     pub targets_url: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct PackConfig {
-    /// URL segment and store key, e.g. `xkin`.
-    pub pack: String,
-    /// Registry identifier, e.g. `pack:assets.xkin` (Rule 11, ADR D7).
-    pub id: String,
-    pub baseline_version: String,
 }
 
 /// Where a resolved pack's bytes come from. One serving path, two byte sources —
@@ -60,6 +51,7 @@ pub struct ServeState {
     store: FsStore,
     shell_dir: PathBuf,
     baseline_dir: PathBuf,
+    tuf_root: PathBuf,
     resolved: Mutex<HashMap<String, std::sync::Arc<ResolvedPack>>>,
 }
 
@@ -72,6 +64,9 @@ impl ServeState {
         };
         let config: AppConfig = serde_json::from_slice(&read("config/app.config.json")?)
             .map_err(|e| format!("app.config.json: {e}"))?;
+        // A config that cannot boot says so now, not at the first unresolvable pack
+        // (design D3).
+        core::config::validate_packs(&config.packs).map_err(|e| format!("app.config.json: {e}"))?;
         let media: HashMap<String, String> = serde_json::from_slice::<
             HashMap<String, serde_json::Value>,
         >(&read("config/media_types.json")?)
@@ -90,6 +85,7 @@ impl ServeState {
             store,
             shell_dir: resource_root.join("shell"),
             baseline_dir: resource_root.join("packs-baseline"),
+            tuf_root: resource_root.join("tuf/root.json"),
             resolved: Mutex::new(HashMap::new()),
         })
     }
@@ -117,11 +113,17 @@ impl ServeState {
         if let Ok(Some(v)) = self.store.previous_version(pack) {
             candidates.push((v, Blobs::Cas));
         }
-        if let Some(pc) = self.config.packs.iter().find(|p| p.pack == pack) {
-            candidates.push((
-                pc.baseline_version.clone(),
-                Blobs::BaselineDir(self.baseline_dir.join(pack)),
-            ));
+        // No embedded_version = the binary embeds no copy of this pack, so it
+        // contributes no candidate and resolution simply yields None (spec
+        // baseline-boot: that is not a fault).
+        if let Some(version) = self
+            .config
+            .packs
+            .iter()
+            .find(|p| p.pack == pack)
+            .and_then(|pc| pc.embedded_version.clone())
+        {
+            candidates.push((version, Blobs::BaselineDir(self.baseline_dir.join(pack))));
         }
 
         for (version, blobs) in candidates {
@@ -184,9 +186,28 @@ impl ServeState {
 
     fn shell_index(&self) -> Option<Vec<u8>> {
         let template = std::fs::read_to_string(self.shell_dir.join("index.html")).ok()?;
+        // The core decides which surface this is; the adapter only resolves and renders
+        // (design D2). Resolution is cached, so asking twice costs nothing.
+        let composition = core::shell::compose(&self.config.packs, &|pack| {
+            self.resolve_pack(pack).is_some()
+        });
+        let chosen: Vec<&PackConfig> = match &composition {
+            core::shell::Composition::Application(packs) => packs.clone(),
+            core::shell::Composition::Bootstrap(boot) => {
+                for pc in core::config::applications(&self.config.packs) {
+                    if self.resolve_pack(&pc.pack).is_none() {
+                        // Diagnostics, not a startup failure (spec baseline-boot).
+                        eprintln!("pack {}: no version available; serving bootstrap", pc.pack);
+                    }
+                }
+                vec![*boot]
+            }
+            core::shell::Composition::Nothing => return None,
+        };
+
         let mut styles = Vec::new();
         let mut scripts = Vec::new();
-        for pc in &self.config.packs {
+        for pc in chosen {
             let rp = self.resolve_pack(&pc.pack)?;
             let base = format!("/packs/{}/{}", pc.pack, rp.version);
             let (s, j) = core::shell::entry_tags(&rp.manifest, &base);
@@ -194,8 +215,13 @@ impl ServeState {
             scripts.push(j);
         }
         Some(
-            core::shell::render_shell(&template, &styles.join("\n    "), &scripts.join("\n    "))
-                .into_bytes(),
+            core::shell::render_shell(
+                &template,
+                &styles.join("\n    "),
+                &scripts.join("\n    "),
+                composition.marker(),
+            )
+            .into_bytes(),
         )
     }
 
@@ -207,7 +233,13 @@ impl ServeState {
         if path == "/" || path == "/index.html" {
             return match self.shell_index() {
                 Some(body) => (200, "text/html".to_string(), body),
-                None => (503, "text/plain".to_string(), b"no pack available".to_vec()),
+                // Not "nothing downloaded yet" — that serves the bootstrap surface. This
+                // is the binary's own embedded content being unusable.
+                None => (
+                    503,
+                    "text/plain".to_string(),
+                    b"no surface available".to_vec(),
+                ),
             };
         }
         if let Some(rest) = path.strip_prefix("/shell/") {
@@ -256,6 +288,19 @@ impl ServeState {
             .collect()
     }
 
+    /// Application packs only. The bootstrap pack is embedded and has no published
+    /// release, so acquisition must not go looking for one on its behalf.
+    pub fn application_pack_ids(&self) -> Vec<(String, String)> {
+        core::config::applications(&self.config.packs)
+            .map(|p| (p.pack.clone(), p.id.clone()))
+            .collect()
+    }
+
+    /// The embedded trust anchor (spec pack-update: the root of trust ships with the app).
+    pub fn tuf_root(&self) -> &std::path::Path {
+        &self.tuf_root
+    }
+
     /// Drop the cached resolution for a pack — the next request re-runs the fallback
     /// chain (the activation seam: pointer flips become visible on reload).
     pub fn invalidate(&self, pack: &str) {
@@ -275,8 +320,15 @@ impl ServeState {
 mod tests {
     use super::*;
 
-    /// Build a resource root + store with a baseline pack of two files.
+    /// Build a resource root + store with an embedded application pack of two files and
+    /// an embedded bootstrap pack of one.
     fn fixture() -> (tempfile::TempDir, ServeState) {
+        fixture_opts(true)
+    }
+
+    /// `app_embedded = false` is the shipped shape (design D1): the binary embeds only
+    /// the bootstrap pack, and the application pack resolves from the store or not at all.
+    fn fixture_opts(app_embedded: bool) -> (tempfile::TempDir, ServeState) {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         let js = b"console.log(1);\n".to_vec();
@@ -292,11 +344,24 @@ mod tests {
         std::fs::create_dir_all(root.join("schemas")).unwrap();
         std::fs::create_dir_all(root.join("shell")).unwrap();
         std::fs::create_dir_all(root.join("packs-baseline/demo/dist")).unwrap();
+        std::fs::create_dir_all(root.join("packs-baseline/boot/dist")).unwrap();
+        let mut demo = serde_json::json!({
+            "pack": "demo", "id": "pack:assets.demo", "role": "application"
+        });
+        if app_embedded {
+            demo["embedded_version"] = "0.1.0".into();
+        }
         std::fs::write(
             root.join("config/app.config.json"),
             serde_json::json!({
                 "csp": "default-src 'self'",
-                "packs": [{"pack": "demo", "id": "pack:assets.demo", "baseline_version": "0.1.0"}]
+                "packs": [
+                    demo,
+                    {
+                        "pack": "boot", "id": "pack:assets.boot",
+                        "role": "bootstrap", "embedded_version": "0.0.1"
+                    }
+                ]
             })
             .to_string(),
         )
@@ -316,22 +381,41 @@ mod tests {
         .unwrap();
         std::fs::write(
             root.join("shell/index.html"),
-            "<head>%%STYLE_TAGS%%</head><body>%%SCRIPT_TAGS%%</body>",
+            r#"<head>%%STYLE_TAGS%%</head><body data-composition="%%COMPOSITION%%">%%SCRIPT_TAGS%%</body>"#,
         )
         .unwrap();
-        std::fs::write(root.join("packs-baseline/demo/dist/a.js"), &js).unwrap();
-        std::fs::write(root.join("packs-baseline/demo/dist/s.css"), &css).unwrap();
+        if app_embedded {
+            std::fs::write(root.join("packs-baseline/demo/dist/a.js"), &js).unwrap();
+            std::fs::write(root.join("packs-baseline/demo/dist/s.css"), &css).unwrap();
+            std::fs::write(
+                root.join("packs-baseline/demo/manifest.json"),
+                serde_json::json!({
+                    "format_version": 1,
+                    "id": "pack:assets.demo",
+                    "version": "0.1.0",
+                    "files": [
+                        {"path": "dist/a.js", "size": js.len(), "sha256": hash(&js)},
+                        {"path": "dist/s.css", "size": css.len(), "sha256": hash(&css)}
+                    ],
+                    "entry": {"scripts": ["dist/a.js"], "styles": ["dist/s.css"]}
+                })
+                .to_string(),
+            )
+            .unwrap();
+        }
+
+        let boot = b"console.log('bootstrap');\n".to_vec();
+        std::fs::write(root.join("packs-baseline/boot/dist/boot.js"), &boot).unwrap();
         std::fs::write(
-            root.join("packs-baseline/demo/manifest.json"),
+            root.join("packs-baseline/boot/manifest.json"),
             serde_json::json!({
                 "format_version": 1,
-                "id": "pack:assets.demo",
-                "version": "0.1.0",
+                "id": "pack:assets.boot",
+                "version": "0.0.1",
                 "files": [
-                    {"path": "dist/a.js", "size": js.len(), "sha256": hash(&js)},
-                    {"path": "dist/s.css", "size": css.len(), "sha256": hash(&css)}
+                    {"path": "dist/boot.js", "size": boot.len(), "sha256": hash(&boot)}
                 ],
-                "entry": {"scripts": ["dist/a.js"], "styles": ["dist/s.css"]}
+                "entry": {"scripts": ["dist/boot.js"], "styles": []}
             })
             .to_string(),
         )
@@ -381,6 +465,75 @@ mod tests {
                 "{p} must be refused, got {status}"
             );
         }
+    }
+
+    #[test]
+    fn scenario_no_downloaded_version_and_no_embedded_copy_boots_bootstrap() {
+        let (_d, s) = fixture_opts(false);
+        // The application pack resolves to nothing, and that is not a fault.
+        assert!(s.resolve_pack("demo").is_none());
+
+        let (status, mime, body) = s.serve("/");
+        assert_eq!(status, 200, "boot reaches a surface, not a startup failure");
+        assert_eq!(mime, "text/html");
+        let html = String::from_utf8(body).unwrap();
+        assert!(
+            html.contains(r#"data-composition="bootstrap""#),
+            "the bootstrap surface is composed: {html}"
+        );
+        assert!(html.contains(r#"src="/packs/boot/0.0.1/dist/boot.js""#));
+        assert!(
+            !html.contains("/packs/demo/"),
+            "no half-composed page: {html}"
+        );
+    }
+
+    #[test]
+    fn scenario_bootstrap_never_composed_when_the_application_is_available() {
+        let (_d, s) = fixture_opts(false);
+        // Stage and activate a downloaded application version.
+        let js = b"console.log(3);\n".to_vec();
+        let mut h = Sha256::new();
+        h.update(&js);
+        let jhash = format!("{:x}", h.finalize());
+        s.store.put_blob(&jhash, &js).unwrap();
+        let manifest = serde_json::json!({
+            "format_version": 1,
+            "id": "pack:assets.demo",
+            "version": "0.4.0",
+            "files": [{"path": "dist/a.js", "size": js.len(), "sha256": jhash}],
+            "entry": {"scripts": ["dist/a.js"], "styles": []}
+        });
+        s.store
+            .put_ref("demo", "0.4.0", manifest.to_string().as_bytes())
+            .unwrap();
+        s.store.activate("demo", "0.4.0").unwrap();
+        s.invalidate("demo");
+
+        let (status, _, body) = s.serve("/");
+        assert_eq!(status, 200);
+        let html = String::from_utf8(body).unwrap();
+        assert!(html.contains(r#"data-composition="application""#));
+        assert!(html.contains(r#"src="/packs/demo/0.4.0/dist/a.js""#));
+        assert!(
+            !html.contains("/packs/boot/"),
+            "the bootstrap surface is not presented once a version is active: {html}"
+        );
+    }
+
+    #[test]
+    fn scenario_unusable_embedded_content_is_distinct_from_nothing_downloaded() {
+        let (dir, s) = fixture_opts(false);
+        // Break the embedded bootstrap pack itself: now nothing at all can be served.
+        std::fs::write(
+            dir.path().join("packs-baseline/boot/manifest.json"),
+            b"{nope",
+        )
+        .unwrap();
+        s.invalidate("boot");
+        let (status, _, body) = s.serve("/");
+        assert_eq!(status, 503);
+        assert_eq!(body, b"no surface available");
     }
 
     #[test]
