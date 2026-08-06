@@ -74,8 +74,17 @@
       threshold 1 on all four roles.
 - [ ] 4.2b **Root key custody — outstanding.** `~/packpub-root-key.pem` is still the only
       copy and has not reached a password manager. Losing it means every installed client
-      needs reinstalling before it will accept a new anchor. Delete it and
-      `~/packpub-signing-key.pem` only after it is stored (user action; ceremony runbook).
+      needs reinstalling before it will accept a new anchor. Delete it only after it is
+      stored (user action; ceremony runbook step 3).
+
+      The online half of that step is **done**: `~/packpub-signing-key.pem` deleted, leaving
+      one key file on disk so there is no question which one needs backing up. Verified
+      before deleting rather than trusted: its public key fingerprint `dfcda343…` matches
+      anchor keyid `433cd0c8…`, which holds timestamp/snapshot/targets — not `1ece4e45…`,
+      the root role, which is the retained file. `PACKPUB_SIGNING_KEY` is set and three
+      `refresh-tuf-timestamp` runs have signed with it green, so the deleted copy was
+      redundant. Even total loss of that secret is recoverable by delegating a fresh online
+      key with the root key, which is the whole point of the split.
 - [x] 4.3 Hosting setup: `dufeutech/steward-packs` public, `PACKS_DEPLOY_KEY` installed,
       Pages built and serving at https://dufeutech.github.io/steward-packs/.
 - [x] 4.4 First real publish and verification. Took three dispatches; the first two found
