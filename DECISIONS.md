@@ -17,9 +17,9 @@ Concrete tool names live here only — `.canon/` and `openspec/specs/` stay abst
   attestations are available at all, online-key custody Actions secrets, root/online key
   separation — supersedes the single-key D4 posture above):
   [openspec/changes/pack-publisher-pipeline/design.md](openspec/changes/pack-publisher-pipeline/design.md)
-- `bootstrap-pack-boot` (active) — 2 ADRs (embedded-size budget enforcement hand-written,
+- `bootstrap-pack-boot` (archived) — 2 ADRs (embedded-size budget enforcement hand-written,
   development materialization by extending packpub's assemble stage over `file://`):
-  [openspec/changes/bootstrap-pack-boot/design.md](openspec/changes/bootstrap-pack-boot/design.md)
+  [openspec/changes/archive/2026-08-05-bootstrap-pack-boot/design.md](openspec/changes/archive/2026-08-05-bootstrap-pack-boot/design.md)
 
 ## Decisions
 

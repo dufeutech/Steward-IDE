@@ -16,8 +16,8 @@
 - [x] 3.1 Create `app/src-tauri/packs-baseline/bootstrap/` with plain HTML/CSS/JS — no framework, no bundler, no build step — rendering acquisition status, a retry action, and a diagnostics view
 - [x] 3.2 Generate its `manifest.json` with packpub's existing deterministic generator and commit both payload and manifest
 - [x] 3.3 Add `bootstrap` to `bundle.resources` coverage (it is inside `packs-baseline/`, so confirm rather than assume) and verify it resolves through `resolve_pack` unchanged
-- [ ] 3.4 Add the embedded-size-budget test per the 1.1 ADR, asserting the total bytes under `packs-baseline/` against the pinned budget and reporting measured-vs-budget on failure — **deferred to 6.1a**: it measures `packs-baseline/`, which still holds the 32 MiB application pack until 6.1, so landing it here would leave the suite red
-- [ ] 3.5 Wire the budget check into `.canon/checks.md` — deferred with 3.4
+- [x] 3.4 Add the embedded-size-budget test per the 1.1 ADR, asserting the total bytes under `packs-baseline/` against the pinned budget and reporting measured-vs-budget on failure — **deferred to 6.1a and done there**: it measures `packs-baseline/`, which still holds the 32 MiB application pack until 6.1, so landing it here would leave the suite red
+- [x] 3.5 Wire the budget check into `.canon/checks.md` — deferred with 3.4, done in 6.1a
 - [x] 3.6 Test that the surface renders with every remote origin unreachable and issues no outbound request for its own content
 
 ## 4. Pack selection at shell composition
