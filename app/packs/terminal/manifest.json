@@ -1,0 +1,25 @@
+{
+  "format_version": 1,
+  "id": "pack:assets.terminal",
+  "version": "0.1.0",
+  "files": [
+    {
+      "path": "terminal.css",
+      "size": 4939,
+      "sha256": "fd1ba8d79224b168f19505e0eac6eb93032da81ebd2263c9d86781130b087b75"
+    },
+    {
+      "path": "terminal.js",
+      "size": 380280,
+      "sha256": "c862a625bed464f2d8cb494eed60c5c035e94f09147d54b68249b6b5cefe181a"
+    }
+  ],
+  "entry": {
+    "scripts": [
+      "terminal.js"
+    ],
+    "styles": [
+      "terminal.css"
+    ]
+  }
+}

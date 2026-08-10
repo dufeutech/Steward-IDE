@@ -1,0 +1,94 @@
+/* The terminal panel. xterm.js's own stylesheet is imported first so our rules layer on
+   top of it rather than fighting it.
+
+   Bundled into the pack, not linked from a CDN: `default-src 'self'` means anything this
+   file references must come from the pack origin. */
+
+@import "@xterm/xterm/css/xterm.css";
+
+.steward-terminal-host {
+  --steward-terminal-bg: #1a1b1e;
+  --steward-terminal-fg: #d7d8db;
+  --steward-terminal-edge: #34363b;
+}
+
+/* Docked to the bottom, over the editor rather than resizing it: the editor keeps its
+   own layout and the terminal is dismissible without disturbing it (spec: "presents
+   alongside the editor without displacing it"). */
+.steward-terminal {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: min(45vh, 420px);
+  display: flex;
+  flex-direction: column;
+  background: var(--steward-terminal-bg);
+  border-top: 1px solid var(--steward-terminal-edge);
+  z-index: 50;
+}
+
+.steward-terminal[hidden] {
+  display: none;
+}
+
+.steward-terminal__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0.6rem;
+  border-bottom: 1px solid var(--steward-terminal-edge);
+  color: var(--steward-terminal-fg);
+  font: 12px/1.4 system-ui, sans-serif;
+}
+
+.steward-terminal__title {
+  font-weight: 600;
+}
+
+/* Where the session's state is stated. Empty while a session is healthy — a status line
+   that always says something trains people to stop reading it. */
+.steward-terminal__state {
+  flex: 1;
+  color: #9aa0a6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.steward-terminal__action,
+.steward-terminal__toggle {
+  background: #2a2c31;
+  color: var(--steward-terminal-fg);
+  border: 1px solid var(--steward-terminal-edge);
+  border-radius: 4px;
+  padding: 0.2rem 0.6rem;
+  font: 12px/1.4 system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.steward-terminal__action:hover,
+.steward-terminal__toggle:hover {
+  background: #34363b;
+}
+
+.steward-terminal__screen {
+  flex: 1;
+  min-height: 0;
+  padding: 0.25rem 0.5rem;
+}
+
+/* The terminal must actually fill its box, or `proposeDimensions` measures the wrong
+   thing and the shell is told a size that does not match what is on screen. */
+.steward-terminal__screen .xterm,
+.steward-terminal__screen .xterm-viewport,
+.steward-terminal__screen .xterm-screen {
+  height: 100%;
+}
+
+.steward-terminal__toggle {
+  position: fixed;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 51;
+}
