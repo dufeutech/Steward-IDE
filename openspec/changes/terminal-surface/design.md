@@ -167,6 +167,41 @@ answer it, which is why `tests/terminal_pty.rs` carries a four-line answerback. 
 rules out ever "simplifying" the surface into a write-only log view — a terminal that cannot
 reply is not a terminal, and on Windows it does not even reach a prompt.
 
+### D4c — The interrupt chord does not reach a running child on Windows **[open defect]**
+
+**Measured during hand verification (task 7.3). Not fixed — recorded so the next session
+starts from the measurement rather than the symptom.**
+
+Ctrl+C in the running application cancels the shell's own prompt line — `abcdefgh^C`
+followed by a fresh prompt — but does **not** stop a child the shell is running. `ping -t`
+and `timeout /t 30` both carried on, under `powershell.exe` and under `cmd.exe` alike, so it
+is not a PSReadLine artefact.
+
+Three measurements place it and rule out the obvious suspects:
+
+| Probe | Result |
+| ----- | ------ |
+| Ctrl+C at the shell prompt, in the app | line cancelled, `^C` echoed — **the byte reaches the shell** |
+| 0x03 written straight into the adapter, no webview (temporary probe, since removed) | `ping -n 25` ran to completion; the shell answered **21.3s** after the interrupt |
+| the same `ping`, same machine, same `cmd.exe`, in **Windows Terminal** | stopped after 5 replies: `Control-C`, `^C`, prompt back |
+
+So the byte path is sound, the surface and xterm.js are not implicated (the probe used
+neither), and ConPTY on this machine *can* deliver an interrupt — Windows Terminal gets one.
+What is missing is the conversion from the 0x03 byte to a `CTRL_C_EVENT` for the child.
+
+The leading candidate is `portable-pty` 0.9 creating every pseudoconsole with
+`PSEUDOCONSOLE_WIN32_INPUT_MODE` unconditionally
+(`src/win/psuedocon.rs`, `PsuedoCon::new`). In that mode a terminal is expected to send
+win32 input records rather than bare control bytes, and xterm.js does not speak it — which
+would explain a 0x03 that arrives as a character for the line editor and never as a control
+event for the child. **Candidate, not conclusion**: it has not been tested by changing the
+flag.
+
+This is a defect in the session layer, not in the pack. It does not block publishing (a
+terminal that cannot interrupt is still a working terminal for everything else), and it is
+not silently acceptable either — the spec's input routing assumes the session receives what
+a terminal session receives.
+
 ### D5 — Session state is a registry in the composition root, never ambient
 
 Sessions are addressed by an opaque, never-reused identifier issued by the core from an
