@@ -17,5 +17,13 @@
   "update": {
     "metadata_url": "https://dufeutech.github.io/steward-packs/tuf/metadata/",
     "targets_url": "https://dufeutech.github.io/steward-packs/tuf/targets/"
+  },
+  "$comment_terminal": "Which shell a session starts (change terminal-surface, design Open Question 1). Candidates are tried in order, but the user's own $SHELL wins on Unix when it exists — a session should behave like a terminal they opened themselves. %COMSPEC% is deliberately NOT consulted on Windows: it is cmd.exe on essentially every machine, which would make the worst available shell the default one everywhere. scrollback_lines is the bound terminal-surface requires be stated; xterm.js's own default is 1000.",
+  "terminal": {
+    "scrollback_lines": 1000,
+    "shell": {
+      "windows": ["pwsh.exe", "powershell.exe", "cmd.exe"],
+      "unix": ["/bin/zsh", "/bin/bash", "/bin/sh"]
+    }
   }
 }
