@@ -17,6 +17,11 @@ Concrete tool names live here only — `.canon/` and `openspec/specs/` stay abst
   attestations are available at all, online-key custody Actions secrets, root/online key
   separation — supersedes the single-key D4 posture above):
   [openspec/changes/archive/2026-08-06-pack-publisher-pipeline/design.md](openspec/changes/archive/2026-08-06-pack-publisher-pipeline/design.md)
+- `terminal-surface` (active) — 4 ADRs (PTY control `portable-pty`, terminal emulation
+  `@xterm/xterm` — overriding the `term.js` named in the request, byte transport Tauri's
+  `Channel` + raw invoke body, execution boundary TUF + `AppManifest::commands` capability
+  gating + a composition check):
+  [openspec/changes/terminal-surface/design.md](openspec/changes/terminal-surface/design.md)
 - `bootstrap-pack-boot` (archived) — 2 ADRs (embedded-size budget enforcement hand-written,
   development materialization by extending packpub's assemble stage over `file://`):
   [openspec/changes/archive/2026-08-05-bootstrap-pack-boot/design.md](openspec/changes/archive/2026-08-05-bootstrap-pack-boot/design.md)
