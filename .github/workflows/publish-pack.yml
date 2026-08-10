@@ -152,16 +152,37 @@ jobs:
         with:
           subject-path: signed/metadata/*.json
 
-      # One commit publishes metadata and targets together, so clients never see a
-      # repository whose metadata and content come from different releases.
-      - name: Publish to the artifact repository
+      # The tree is OVERLAID, never replaced. `tuftool update` writes only the
+      # targets this release adds, while the targets metadata it signs names every
+      # target of every release — measured locally: a second release wrote 3 blobs
+      # and signed metadata naming 105. Replacing the tree would delete content the
+      # new metadata still pins, and clients would 404 on the older pack against a
+      # repository whose signatures all verify. Metadata files overwrite by name;
+      # target blobs accumulate, which is what consistent snapshots expect.
+      - name: Assemble the published tree
         run: |
-          rm -rf "published/$TUF_SUBDIR"
           mkdir -p "published/$TUF_SUBDIR"
           cp -r signed/* "published/$TUF_SUBDIR/"
           # Pages runs Jekyll over a branch deploy unless told otherwise. TUF metadata
           # must be served byte-for-byte or every signature check fails.
           touch published/.nojekyll
+
+      # The tree exactly as a client will see it, verified before any client can.
+      # tuftool walks the root chain and hash-verifies every target it writes, so a
+      # blob the signed metadata pins but the tree does not carry fails here rather
+      # than in the field. This is the guard the overlay above needs: nothing else
+      # in the pipeline compares signed metadata against the bytes being served.
+      - name: Verify the assembled tree as a client would
+        run: |
+          tuftool download -r app/src-tauri/tuf/root.json \
+            -m "file://$(realpath "published/$TUF_SUBDIR/metadata")/" \
+            -t "file://$(realpath "published/$TUF_SUBDIR/targets")/" \
+            "$RUNNER_TEMP/tuf-verify"
+
+      # One commit publishes metadata and targets together, so clients never see a
+      # repository whose metadata and content come from different releases.
+      - name: Publish to the artifact repository
+        run: |
           cd published
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
