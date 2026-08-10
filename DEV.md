@@ -5,14 +5,19 @@ in [`.canon/checks.md`](.canon/checks.md), which is their one home.
 
 ## Prerequisites
 
-| Need               | Check                 | Notes                                                           |
-| ------------------ | --------------------- | --------------------------------------------------------------- |
-| Node               | `node -v`             | Only to run the Tauri CLI; there is no frontend build step.     |
-| Rust               | `cargo -V`            | The app _is_ the Rust crate under `app/src-tauri/`.             |
-| WebView2 (Windows) | ships with Windows 11 | Linux needs `webkit2gtk`; macOS needs Xcode command-line tools. |
+| Need               | Check                 | Notes                                                                     |
+| ------------------ | --------------------- | ------------------------------------------------------------------------- |
+| Node               | `node -v`             | Runs the Tauri CLI, and builds the terminal pack (`app/packs/terminal/`). |
+| Rust               | `cargo -V`            | The app _is_ the Rust crate under `app/src-tauri/`.                       |
+| WebView2 (Windows) | ships with Windows 11 | Linux needs `webkit2gtk`; macOS needs Xcode command-line tools.           |
 
-No bundler, no dev server, no TypeScript toolchain. `tauri.conf.json` points `frontendDist`
-at `app/src-tauri/shell/`, which is served as-is.
+No dev server and no TypeScript toolchain. `tauri.conf.json` points `frontendDist` at
+`app/src-tauri/shell/`, which is served as-is.
+
+There is exactly one frontend build, and it is scoped to `app/packs/terminal/` (change
+`terminal-surface`, design D7). `shell/` stays build-free and the Rust build does not depend
+on it, so a broken Node toolchain cannot stop the application from building — it can only
+stop you from producing a new terminal pack payload.
 
 ## Start it
 
@@ -38,6 +43,16 @@ The window opens at `pack://localhost` — a custom protocol served by the Rust 
 2. **Then the editor**, once the `xkin` pack has been fetched, verified and activated —
    acquisition runs in the background at startup and never blocks it. Subsequent runs skip
    straight here because the pack is already in the local store.
+3. **A "Terminal" button, bottom right**, once the `terminal` pack is also active. Click it
+   or press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>`</kbd> to open a shell. Hiding the panel
+   does not end the session.
+
+> **Two application packs now compose the page**, and `compose()` presents the application
+> only when *every* application pack resolves. If the `terminal` pack cannot be acquired you
+> get the bootstrap surface and **no editor** — not a working editor with the terminal
+> missing. That is deliberate (a page missing part of the application is not the
+> application), but it means a terminal-pack problem looks like a total content failure.
+> Check the console for `pack terminal: no version available; serving bootstrap`.
 
 Useful console lines (the terminal running `tauri dev`, not the webview):
 
