@@ -77,6 +77,30 @@ Both files you edit for that (`config/app.config.json` and `tuf/root.json`) are 
 Revert them before committing — a dev anchor on `main` ships a binary that trusts throwaway
 keys and rejects real releases.
 
+## Checking by hand, repeatably
+
+Some properties only a running app can show — a full-screen program redrawing in place,
+double-width text staying aligned, dense output not stalling the window. Those are driven
+with [`appdrive`](scripts/README.md) rather than by hand-rolling window automation each
+time:
+
+```bash
+cd scripts/py
+uv run appdrive find                                  # window rect: the frame the rest use
+uv run appdrive keys '^+`' --shot /tmp/panel.png      # open the terminal, capture the result
+uv run appdrive click 762 606 --shot /tmp/after.png   # click in window coordinates
+uv run appdrive crop /tmp/after.png /tmp/zoom.png --y 520 --height 90 --scale 3
+uv run appdrive close                                 # close the way the X does, not a kill
+```
+
+Two things it does that a quick script will not: it captures the window's own surface, so a
+window behind another one still yields its real content instead of whatever is on top; and
+it raises the window without the ALT tap that leaves it in menu-bar state — where a typed
+space opens the system menu and the next letter picks **Close**.
+
+`close` is deliberately not a kill: the app's own shutdown is what terminates live terminal
+sessions, so killing it would skip the very thing worth checking.
+
 ## Simulating a fresh install
 
 The content store and TUF metadata cache live outside the checkout, so `cargo clean` does not
