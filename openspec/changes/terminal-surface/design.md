@@ -189,13 +189,27 @@ So the byte path is sound, the surface and xterm.js are not implicated (the prob
 neither), and ConPTY on this machine *can* deliver an interrupt — Windows Terminal gets one.
 What is missing is the conversion from the 0x03 byte to a `CTRL_C_EVENT` for the child.
 
-The leading candidate is `portable-pty` 0.9 creating every pseudoconsole with
-`PSEUDOCONSOLE_WIN32_INPUT_MODE` unconditionally
-(`src/win/psuedocon.rs`, `PsuedoCon::new`). In that mode a terminal is expected to send
-win32 input records rather than bare control bytes, and xterm.js does not speak it — which
-would explain a 0x03 that arrives as a character for the line editor and never as a control
-event for the child. **Candidate, not conclusion**: it has not been tested by changing the
-flag.
+**Three candidates have been tested and refuted.** Each was run as the same probe —
+`ping -n 25`, interrupt, time how long the shell takes to answer — so the numbers are
+comparable, and every one of them came back at ~21s, meaning `ping` ran to completion:
+
+| Candidate | How it was tested | Result |
+| --------- | ----------------- | ------ |
+| xterm.js or the surface mis-sends the chord | probe writes into the adapter directly, no webview | refuted — fails without a webview at all |
+| `portable-pty` 0.9 enables `PSEUDOCONSOLE_WIN32_INPUT_MODE`, so bare control bytes are not key records | wrote the win32-input-mode records for Ctrl+C (`ESC[17;29;0;1;8;1_` …) instead of `0x03` | refuted — identical result |
+| …and the flag itself is the problem | `[patch.crates-io]` onto a local `portable-pty` with the flag removed | refuted — identical result |
+| the in-box ConPTY is older than the one Windows Terminal ships | sideloaded Windows Terminal's `OpenConsoleProxy.dll` as `conpty.dll` plus `OpenConsole.exe` | refuted — identical result |
+
+Also worth carrying: the failure reproduces from a **console** process (`cargo test`), so it
+is not about the app being a GUI process with no console of its own.
+
+What remains unexplained is why Windows Terminal succeeds where the same ConPTY, driven the
+same way, does not. The next candidate — untested — is that the fix does not belong in the
+byte stream at all: `AttachConsole` onto the session's shell followed by
+`GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0)`, which is how a terminal raises a control event
+rather than hoping conhost synthesises one. That is a real design decision (attaching a
+console to a GUI process, and not catching the event ourselves), so it belongs in a scoped
+follow-up with its own ADR, not in this change.
 
 This is a defect in the session layer, not in the pack. It does not block publishing (a
 terminal that cannot interrupt is still a working terminal for everything else), and it is
