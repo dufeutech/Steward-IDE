@@ -151,14 +151,14 @@ flowchart TB
 
 ## Where each concern lives
 
-| Concern | Home |
-| ------- | ---- |
-| Which shell starts, scrollback bound | `config/app.config.json` → `core::terminal::config` |
-| Session identity, size validity, exit classification | `core::terminal` |
-| PTY allocation, threads, reaping | `adapters/pty.rs` |
-| Channel and raw-body translation | `adapters/terminal_ipc.rs` |
-| Wiring, gating, event emission | `lib.rs` |
-| Rendering, input encoding, scrollback | `app/packs/terminal/` |
+| Concern                                              | Home                                                |
+| ---------------------------------------------------- | --------------------------------------------------- |
+| Which shell starts, scrollback bound                 | `config/app.config.json` → `core::terminal::config` |
+| Session identity, size validity, exit classification | `core::terminal`                                    |
+| PTY allocation, threads, reaping                     | `adapters/pty.rs`                                   |
+| Channel and raw-body translation                     | `adapters/terminal_ipc.rs`                          |
+| Wiring, gating, event emission                       | `lib.rs`                                            |
+| Rendering, input encoding, scrollback                | `app/packs/terminal/`                               |
 
 ## Related
 

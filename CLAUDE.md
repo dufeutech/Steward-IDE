@@ -26,18 +26,18 @@ precedence and ownership contract.
 
 ## The rules (open the file when the trigger fires)
 
-| #                                    | Trigger                              | In one line                                                                       |
-| ------------------------------------ | ------------------------------------ | --------------------------------------------------------------------------------- |
-| [1](.canon/rules/01-diagrams.md)     | explaining or changing architecture  | Draw it in Mermaid, in `docs/architecture/`, describing what _is_.                |
-| [2](.canon/rules/02-architecture.md) | code touching any external system    | Pure core, ports and adapters at the boundary; dependencies point inward.         |
-| [3](.canon/rules/03-commits.md)      | finishing any multi-file task        | Review the diff, split by intent, Conventional Commits, never co-author.          |
-| [4](.canon/rules/04-merges.md)       | any branch merge                     | A clean merge is not a correct one — you are the reviewer.                        |
-| [5](.canon/rules/05-cleanup.md)      | a merge just landed                  | Delete what the merge superseded; git history is the history.                     |
-| [6](.canon/rules/06-validation.md)   | about to claim something is done     | Run the checks in `.canon/checks.md`; report what you couldn't run as unverified. |
-| [7](.canon/rules/07-coherence.md)    | code sits beside an existing pattern | Coherence beats minimal diff; consolidate duplicates, flag out-of-scope mess.     |
-| [8](.canon/rules/08-docs.md)         | architecture or API changed          | Docs that contradict the code are defects — same change set, not later.           |
-| [9](.canon/rules/09-standards.md)    | defining schemas, IDs, vocabularies  | Adopt the global standard: JSON Schema/OpenAPI/AsyncAPI; Wikidata/DOI/ORCID/LEI + UUID; Schema.org/RDF/ISO. |
-| [10](.canon/rules/10-system-shape.md) | starting a system or bounded context | Modular monolith on a kernel by default; DDD contexts, events between them, reads split from writes. |
+| #                                        | Trigger                              | In one line                                                                                                                   |
+| ---------------------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| [1](.canon/rules/01-diagrams.md)         | explaining or changing architecture  | Draw it in Mermaid, in `docs/architecture/`, describing what _is_.                                                            |
+| [2](.canon/rules/02-architecture.md)     | code touching any external system    | Pure core, ports and adapters at the boundary; dependencies point inward.                                                     |
+| [3](.canon/rules/03-commits.md)          | finishing any multi-file task        | Review the diff, split by intent, Conventional Commits, never co-author.                                                      |
+| [4](.canon/rules/04-merges.md)           | any branch merge                     | A clean merge is not a correct one — you are the reviewer.                                                                    |
+| [5](.canon/rules/05-cleanup.md)          | a merge just landed                  | Delete what the merge superseded; git history is the history.                                                                 |
+| [6](.canon/rules/06-validation.md)       | about to claim something is done     | Run the checks in `.canon/checks.md`; report what you couldn't run as unverified.                                             |
+| [7](.canon/rules/07-coherence.md)        | code sits beside an existing pattern | Coherence beats minimal diff; consolidate duplicates, flag out-of-scope mess.                                                 |
+| [8](.canon/rules/08-docs.md)             | architecture or API changed          | Docs that contradict the code are defects — same change set, not later.                                                       |
+| [9](.canon/rules/09-standards.md)        | defining schemas, IDs, vocabularies  | Adopt the global standard: JSON Schema/OpenAPI/AsyncAPI; Wikidata/DOI/ORCID/LEI + UUID; Schema.org/RDF/ISO.                   |
+| [10](.canon/rules/10-system-shape.md)    | starting a system or bounded context | Modular monolith on a kernel by default; DDD contexts, events between them, reads split from writes.                          |
 | [11](.canon/rules/11-object-registry.md) | naming or registering system objects | One grammar — `kind:namespace.object_name`, lowercase snake_case — in one kernel registry that every projection derives from. |
 
 ## The two ideas that make this work

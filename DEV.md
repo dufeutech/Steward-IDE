@@ -48,7 +48,7 @@ The window opens at `pack://localhost` — a custom protocol served by the Rust 
    does not end the session.
 
 > **Two application packs now compose the page**, and `compose()` presents the application
-> only when *every* application pack resolves. If the `terminal` pack cannot be acquired you
+> only when _every_ application pack resolves. If the `terminal` pack cannot be acquired you
 > get the bootstrap surface and **no editor** — not a working editor with the terminal
 > missing. That is deliberate (a page missing part of the application is not the
 > application), but it means a terminal-pack problem looks like a total content failure.
