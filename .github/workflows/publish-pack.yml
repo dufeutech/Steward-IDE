@@ -69,9 +69,57 @@ jobs:
         if: steps.tuftool-cache.outputs.cache-hit != 'true'
         run: cd scripts/go && go run ./cmd/ensure tuftool --method cargo
 
+      # Two kinds of pack, distinguished by whether the manifest records an external
+      # origin (change `terminal-surface`, design D7):
+      #
+      #   purl present — third-party, e.g. `xkin`. The payload is FETCHED from the npm
+      #     origin the manifest names and verified against it. Nothing is built here, so
+      #     what ships is exactly what was published upstream.
+      #   purl absent  — first-party, e.g. `terminal`. There is nothing to fetch: the
+      #     source is in this repository and the payload is BUILT from it, then verified
+      #     against the committed manifest the same way.
+      #
+      # Both paths end at the same place — a payload tree that matches its manifest — so
+      # everything after this step is shared, including signing.
+      - name: Decide how this pack's payload is obtained
+        id: origin
+        run: |
+          if jq -e 'has("purl")' "$PACK_DIR/manifest.json" > /dev/null; then
+            echo "kind=fetched" >> "$GITHUB_OUTPUT"
+            echo "payload_dir=$PACK_DIR" >> "$GITHUB_OUTPUT"
+          else
+            echo "kind=built" >> "$GITHUB_OUTPUT"
+            echo "payload_dir=$PACK_DIR/dist" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Fetch and verify the pack payload
+        if: steps.origin.outputs.kind == 'fetched'
         working-directory: scripts/py
         run: uv run --package packpub packpub baseline ../../$PACK_DIR
+
+      - uses: actions/setup-node@v4
+        if: steps.origin.outputs.kind == 'built'
+        with:
+          node-version: 22
+
+      - name: Build the pack payload
+        if: steps.origin.outputs.kind == 'built'
+        working-directory: ${{ env.PACK_DIR }}
+        run: |
+          npm ci
+          npm run build
+
+      # The committed manifest is the source of truth either way. A build that produced
+      # different bytes than the manifest pins must fail here rather than be signed:
+      # otherwise "what the repository says is live" and "what is live" drift apart
+      # silently, which is the one property the whole pipeline exists to hold.
+      - name: Verify the payload against its committed manifest
+        if: steps.origin.outputs.kind == 'built'
+        working-directory: scripts/py
+        run: |
+          uv run --package packpub packpub manifest \
+            ../../${{ steps.origin.outputs.payload_dir }} \
+            --verify ../../$PACK_DIR/manifest.json
 
       - name: Decide create-vs-update and the next metadata version
         id: state
@@ -93,7 +141,7 @@ jobs:
         run: |
           uv run --package packpub packpub publish \
             ../../$PACK_DIR/manifest.json \
-            ../../$PACK_DIR \
+            ../../${{ steps.origin.outputs.payload_dir }} \
             ../../signed \
             --root-json ../../app/src-tauri/tuf/root.json \
             --version ${{ steps.state.outputs.version }} \

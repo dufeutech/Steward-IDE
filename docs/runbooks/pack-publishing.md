@@ -88,9 +88,39 @@ config every installed client reads. Get them right once.
 ## 2. Publish a release
 
 A release is whatever the committed manifest pins. Update
-`app/packs/<pack>/manifest.json` and merge that first — the workflow fetches the origin
-the manifest records and verifies the payload against it before anything is signed, so
-the repository stays the source of truth about what is live.
+`app/packs/<pack>/manifest.json` and merge that first — the workflow obtains the payload,
+verifies it against that manifest, and only then signs, so the repository stays the source
+of truth about what is live.
+
+### Two kinds of pack
+
+How the payload is obtained depends on one thing: **whether the manifest records a `purl`.**
+The workflow branches on it; you do not pass a flag.
+
+| Manifest | Kind | Payload comes from | Payload root | Example |
+| -------- | ---- | ------------------ | ------------ | ------- |
+| has `purl` | third-party | **fetched** from the npm origin the `purl` names | `app/packs/<pack>/` | `xkin` |
+| no `purl` | first-party | **built** from source in this repository | `app/packs/<pack>/dist/` | `terminal` |
+
+Both end at the same place — a payload tree that matches its manifest — and everything from
+signing onward is identical.
+
+For a first-party pack, regenerate the manifest after every payload change, or the publish
+fails at the verification step rather than shipping bytes the repository does not describe:
+
+```bash
+cd app/packs/terminal && npm ci && npm run build
+cd ../../../scripts/py
+uv run --package packpub packpub manifest ../../app/packs/terminal/dist \
+  --id pack:assets.terminal --version <next-semver> \
+  --script terminal.js --style terminal.css \
+  --out ../../app/packs/terminal/manifest.json
+```
+
+The built payload is **not committed** — `app/.gitignore` ignores `dist`, and the workflow
+rebuilds it. That is the opposite of the bootstrap pack, whose payload *is* committed
+precisely because a recovery surface that must be built before it works is not a recovery
+surface.
 
 That manifest lives outside `app/src-tauri/`: it is publisher input, not something the
 binary carries. The binary embeds only the bootstrap recovery surface, so a new install
