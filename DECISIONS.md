@@ -22,6 +22,11 @@ Concrete tool names live here only — `.canon/` and `openspec/specs/` stay abst
   `Channel` + raw invoke body, execution boundary TUF + `AppManifest::commands` capability
   gating + a composition check):
   [openspec/changes/terminal-surface/design.md](openspec/changes/terminal-surface/design.md)
+- `terminal-interrupt-signal` (active) — 3 ADRs (raising a control event built in-process and
+  guarded, because nothing exists to adopt — `ctrlc` receives rather than sends; Windows
+  binding `windows-sys`; interrupt scoped by console attachment with process group `0`, the
+  only form the platform delivers for `CTRL_C_EVENT`):
+  [openspec/changes/terminal-interrupt-signal/design.md](openspec/changes/terminal-interrupt-signal/design.md)
 - `bootstrap-pack-boot` (archived) — 2 ADRs (embedded-size budget enforcement hand-written,
   development materialization by extending packpub's assemble stage over `file://`):
   [openspec/changes/archive/2026-08-05-bootstrap-pack-boot/design.md](openspec/changes/archive/2026-08-05-bootstrap-pack-boot/design.md)
