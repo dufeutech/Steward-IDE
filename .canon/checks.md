@@ -32,16 +32,25 @@ A check covers a platform only when it **executes** on it. Building the product 
 establishes that the code compiles, not that its platform-conditional behaviour is correct, and
 does not count here.
 
-| Platform | Covered by                                                    | Where                                             |
-| -------- | ------------------------------------------------------------- | ------------------------------------------------- |
-| Linux    | every row above                                               | `checks.yml`, and the Unix verification container |
-| macOS    | **`cargo test` and `cargo build` only** — not fmt, not clippy | `checks.yml`, `macos-latest` leg                  |
-| Windows  | the Rust rows, by hand and in the release matrix              | developer machines; `release.yml`                 |
+| Platform | What executes there                                                                                               | Where                                     |
+| -------- | ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Linux    | Rust formatter, linter, unit + integration tests, build; Go linter and build; packpub tests and anchor; doc links | `checks.yml`; Unix verification container |
+| macOS    | **Rust unit + integration tests and build only** — not the formatter, not the linter                              | `checks.yml`, `macos-latest` leg          |
+| Windows  | the Rust rows, **by hand only — no CI**                                                                           | developer machines                        |
 
 macOS is narrower on purpose: `cargo fmt` and `cargo clippy` analyse source rather than
 platform behaviour, so a second runner would reach an identical verdict. The two sites that
 genuinely differ there do run — `terminal_pty` against BSD `openpty` rather than Linux's, and
 `terminal_ipc`'s `cfg(unix)` shell selection on a second Unix.
+
+**No row above is covered on every platform**, and several are covered on none by CI: the pack
+payload, addon pairing, file-size review, embedded size and release gate rows run by hand or
+only inside `release.yml`. Absence from this table means uncovered, not passing.
+
+**Windows is built in the release matrix, and that is not coverage.** `release.yml` compiles
+and bundles Windows artifacts, but executes no test there — the only Rust suite the release
+path runs is `embedded_surface`, on Linux. Building for a platform establishes that the code
+compiles; `terminal_interrupt_windows` has never run anywhere except a developer's machine.
 
 **What macOS coverage does not establish.** No Gatekeeper, quarantine, notarization, signing or
 launch property is verified on any platform, and no macOS artifact is built, published or
