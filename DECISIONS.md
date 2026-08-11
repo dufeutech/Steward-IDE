@@ -42,7 +42,8 @@ Concrete tool names live here only — `.canon/` and `openspec/specs/` stay abst
   anchor-identity half); provenance `actions/attest-build-provenance@v3`, matching
   `publish-pack.yml` rather than the current `v4`, with the repo-wide bump left as its own
   change — **since carried out; see "Provenance attestation version" below**; platforms
-  Windows + Linux with macOS excluded because it has never run; self-update
+  Windows + Linux with macOS excluded because it has never run — **that reason expired on
+  2026-08-11; see "macOS in the release set" below**; self-update
   still off; unsigned with the OS warning stated to users rather than discovered by them:
   [openspec/changes/archive/2026-08-11-binary-release-pipeline/design.md](openspec/changes/archive/2026-08-11-binary-release-pipeline/design.md)
 - `bootstrap-pack-boot` (archived) — 2 ADRs (embedded-size budget enforcement hand-written,
@@ -186,3 +187,25 @@ Concrete tool names live here only — `.canon/` and `openspec/specs/` stay abst
 - **Unverified**: not yet exercised in CI. `publish-pack.yml` is `workflow_dispatch`-only and
   `release.yml` triggers on a version tag, so neither runs on a push to `main`. The next pack
   publish and the next release are what confirm it.
+
+### Decision: macOS in the release set — still excluded, for a different reason
+
+- **Status**: approved (2026-08-11, `macos-ci-verification`). **Supersedes the reason** given
+  in `binary-release-pipeline` D6, not the decision.
+- **What expired**: D6 excluded macOS because it "has never run". It has now run. The checks
+  build the application and execute the Rust suite on `macos-latest`, which resolved to
+  `macos-26-arm64` (macOS 26.5.2) — passing on the first attempt with no source change, and
+  with `terminal_pty`'s interrupt scenarios exercised against BSD `openpty`.
+- **Why macOS is still not released**: the artifacts would be unsigned and un-notarized, and
+  macOS refuses those far more firmly than Windows warns about them — a refusal to open
+  rather than a warning to click through. Notarization requires a paid Apple Developer
+  account. That is the same class of problem D6 deferred for Windows code signing, and it is
+  a purchasing decision, not an engineering one.
+- **What this is not**: verification is a precondition for shipping a platform, never a
+  substitute for deciding to ship it. A green macOS leg is not a promise of a macOS
+  installer, and the spec `platform-verification` keeps the two sets apart on purpose.
+- **Unquantified, deliberately**: nobody has priced the Apple Developer account against the
+  Windows certificate, or decided whether either is worth buying. Naming the real reason is
+  this change's job; answering it is not.
+- **Isolation**: `release.yml`'s matrix and `tauri.conf.json`'s bundle targets. Adding macOS
+  later is an entry in each, not a redesign.

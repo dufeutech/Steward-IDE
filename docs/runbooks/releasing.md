@@ -91,8 +91,11 @@ fixed version over withdrawing one, unless what shipped is actively harmful.
 
 ## Known gaps
 
-- **macOS is not built.** Never run there — no build, no test, no launch. Stated in
-  [`installing.md`](../installing.md) where a user meets it.
+- **macOS is not built.** It is compiled and tested on every change (see
+  [`.canon/checks.md`](../../.canon/checks.md)), but no installer is produced: the artifact
+  would be unsigned and un-notarized, and macOS refuses those rather than warning about them.
+  Stated in [`installing.md`](../installing.md) where a user meets it. Nothing has ever been
+  _launched_ on macOS — the checks compile and test, they do not start the application.
 - **Artifacts are unsigned.** Both operating systems warn; Smart App Control may block
   outright. The provenance attestation is the answer offered instead, and adding signing
   later is a step inside an existing job, not a redesign.

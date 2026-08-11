@@ -46,10 +46,13 @@ process did not produce fails, including one altered after publication. The
 
 ## Platforms that are not covered
 
-**macOS is not built.** The application is configured for it, but nothing about this project
-has ever run there — no build, no test, no launch. Shipping an installer nobody has started
-would be a claim the project cannot support, so no macOS artifact is published rather than an
-unverified one. This is a gap, not a decision that macOS does not matter.
+**macOS is not built.** The application compiles and its test suite passes on macOS — that is
+checked on every change — but no installer is produced or published.
+
+The reason is signing. Unsigned macOS applications are not warned about the way Windows warns
+about them; they are refused, and notarizing one requires a paid Apple Developer account
+nobody has bought. Publishing an installer most people could not open would be worse than
+publishing none. This is a gap, not a decision that macOS does not matter.
 
 The Linux artifacts are built on Ubuntu 22.04, which sets the oldest glibc they will run
 against; newer distributions are fine.
