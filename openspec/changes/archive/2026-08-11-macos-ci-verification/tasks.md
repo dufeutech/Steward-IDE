@@ -98,8 +98,18 @@
 
 ## 6. Close out
 
-- [ ] 6.1 Run the checks from `.canon/checks.md` that this change can affect — the markdown
+- [x] 6.1 Run the checks from `.canon/checks.md` that this change can affect — the markdown
       formatter and the doc-link check at minimum — and report anything that could not be run
       as unverified rather than passing.
-- [ ] 6.2 Commit per Rule 3, split by intent: the workflow matrix, the documentation of
+      **Ran and passed:** markdown formatter; doc links (`no broken links`); `openspec
+      validate` on the change and on all 12 main specs; and — via run 31546654534 — the Rust
+      formatter, linter, unit tests, integration tests and build on **both** Linux and macOS,
+      plus the Go and Python rows.
+      **Not run, and not affected by this change** (docs and one workflow file only): Unix
+      verification container, pack payload, addon pairing, file-size review, embedded size,
+      trust anchor, release gate. Reported as unverified rather than assumed passing.
+- [x] 6.2 Commit per Rule 3, split by intent: the workflow matrix, the documentation of
       coverage, and the D6 correction are three separate concerns.
+      Five commits: the matrix (`874b1eb`), the canon coverage statement (`8042719`), the
+      expired-reason correction across `DECISIONS.md` and both user-facing docs (`3a17b55`),
+      and the openspec records.

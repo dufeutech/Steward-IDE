@@ -46,6 +46,13 @@ Concrete tool names live here only — `.canon/` and `openspec/specs/` stay abst
   2026-08-11; see "macOS in the release set" below**; self-update
   still off; unsigned with the OS warning stated to users rather than discovered by them:
   [openspec/changes/archive/2026-08-11-binary-release-pipeline/design.md](openspec/changes/archive/2026-08-11-binary-release-pipeline/design.md)
+- `macos-ci-verification` (archived 2026-08-11) — 1 ADR (macOS host **Rent** a GitHub-hosted
+  runner; infrastructure resolves to Rent without an option comparison, and owning the machine
+  is what kept macOS unverified for the project's whole life). The gate also corrected the
+  change's own design twice: `macos-13` is retired outright rather than "the last x86_64
+  image", and macOS's two-version support policy is a stronger argument for `macos-latest`
+  than the one first written:
+  [openspec/changes/archive/2026-08-11-macos-ci-verification/design.md](openspec/changes/archive/2026-08-11-macos-ci-verification/design.md)
 - `bootstrap-pack-boot` (archived) — 2 ADRs (embedded-size budget enforcement hand-written,
   development materialization by extending packpub's assemble stage over `file://`):
   [openspec/changes/archive/2026-08-05-bootstrap-pack-boot/design.md](openspec/changes/archive/2026-08-05-bootstrap-pack-boot/design.md)
