@@ -46,21 +46,25 @@ genuinely different pty implementation.
 
 ## Decisions
 
-### D1. The macOS host — Rent a hosted runner
+### D1. The macOS host — Rent a GitHub-hosted runner
 
-**Decision:** Use GitHub-hosted macOS runners. **Rent infra**, the top of the hierarchy.
-
-**Why:** Free on a public repository, zero custody, zero maintenance, and it is the same
-mechanism every other job in this repository already uses — no new concept enters the build.
-
-**Considered:** buying or borrowing a Mac (the option that has kept this unverified for the
-whole life of the project — a capital cost and a machine to maintain, for a check that runs
-in minutes); a self-hosted runner on a borrowed Mac (all of the above plus a persistent
-credential and a security boundary); cross-compiling from Linux (rejected outright — it would
-prove the code compiles, which the spec explicitly refuses to accept as coverage).
-
-**Confirm via `/ai:decide` before implementing.** This is the change's only build-vs-adopt
-concern; the rest is configuration.
+- **Status**: approved (`/ai:decide`, 2026-08-11)
+- **Tier**: **Rent**. A CI runner is compute, and the hierarchy resolves infrastructure to
+  Rent without further evaluation. There was never a tool choice here — only the question of
+  whether we own the machine, and owning it is the thing that kept macOS unverified for the
+  whole life of the project.
+- **Why**: verified against GitHub's runner documentation rather than recalled — macOS
+  runners are **free and unlimited on public repositories**, which this repository now is.
+  Zero custody, zero maintenance, and the same mechanism every other job here already uses,
+  so no new concept enters the build.
+- **Considered**: buying or borrowing a Mac (capital cost and a machine to maintain, for a
+  check that runs in minutes — and the option whose absence *is* the status quo);
+  a self-hosted runner on a borrowed Mac (all of the above, plus a persistent credential and
+  a new security boundary, for a public repository); cross-compiling from Linux (rejected
+  outright — it establishes that the code compiles, which the spec explicitly refuses to
+  accept as coverage).
+- **Isolation**: `.github/workflows/checks.yml` alone. Nothing in the product knows the
+  runner exists; moving to a self-hosted or third-party runner later is a label change.
 
 ### D2. Shape — extend the existing `rust` job into a platform matrix
 
@@ -96,11 +100,28 @@ same file rather than the pinned `ubuntu-22.04` in `release.yml`.
 **Why:** `release.yml` pins because the build image's glibc sets the floor of what the
 AppImage will run on — a property of the artifact. A checks job produces no artifact, so
 there is nothing to pin for; a rolling image failing is a visible, non-shipping failure.
-Apple Silicon is where macOS users are, and the x86_64 image is on its way out.
 
-**Considered:** adding `macos-13` for x86_64 coverage (doubles the runner cost for an
-architecture Apple is retiring — revisit only if an actual x86_64 macOS user appears); pinning
-a numbered image (the pin buys stability the release path needs and this path does not).
+The stronger reason is maintenance, and it is specific to macOS. GitHub supports only the
+**latest two macOS versions** and retires the rest on a published schedule: `macos-13` was
+retired in December 2025, and `macos-14` began deprecation on 2026-07-06 and is unsupported
+from 2026-11-02. A pinned macOS label is therefore a guaranteed future breakage with a date
+on it, where `ubuntu-22.04` is not. `macos-latest` is the option that does not need
+revisiting.
+
+**Considered:** pinning a numbered image such as `macos-15` (buys stability the release path
+needs and this path does not, and buys it with a scheduled expiry); adding x86_64 coverage
+via `macos-15-intel` (doubles the runner time for an architecture Apple is winding down —
+revisit only if an actual Intel macOS user appears).
+
+**Correction to an earlier draft of this document:** it stated that `macos-13` was the last
+x86_64 image. That was wrong — `macos-13` is retired outright, and Intel coverage now lives
+under the `-intel` suffix. Checked, not recalled.
+
+**One fact this design does not assert:** which macOS version `macos-latest` resolves to
+today. The migration to `macos-26` was scheduled for 2026-06-15 to 2026-07-15 and its
+tracking issue is closed, but the documentation and the changelog do not agree, and the
+decision does not depend on the answer. Task 3.1 reads it out of the run log, where it is a
+measurement rather than a claim.
 
 ### D4. Gatekeeper — verify nothing, claim nothing
 
