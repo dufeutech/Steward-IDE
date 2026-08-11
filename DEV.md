@@ -116,6 +116,12 @@ space opens the system menu and the next letter picks **Close**.
 `close` is deliberately not a kill: the app's own shutdown is what terminates live terminal
 sessions, so killing it would skip the very thing worth checking.
 
+> **Never measure "did it stop?" with a command that stops on its own.** Each `appdrive`
+> invocation costs a few seconds to start, so a bounded command like `ping -n 25` can finish
+> before your chord lands — and a finished command with `^C` at the prompt is indistinguishable
+> from an interrupt that did nothing. It cost one false negative already. Use an unbounded
+> command (`ping -t`) and read the count it stopped at.
+
 ## Simulating a fresh install
 
 The content store and TUF metadata cache live outside the checkout, so `cargo clean` does not
