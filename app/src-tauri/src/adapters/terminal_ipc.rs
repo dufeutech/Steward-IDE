@@ -63,6 +63,14 @@ pub fn raw_body<'a>(request: &'a Request<'a>) -> Result<&'a [u8], SessionError> 
 /// The platform split lives here rather than in the core because "which family of
 /// candidates applies" and "what `$SHELL` means" are both facts about the host.
 pub fn shell_for_this_platform(config: &TerminalConfig) -> Result<String, SessionError> {
+    // Reading the environment happens here and nowhere below, so the decision underneath
+    // stays testable without mutating this process's environment — the same separation
+    // `resolve_shell` already makes for the environment and the existence probe.
+    shell_for(config, std::env::var("SHELL").ok().as_deref())
+}
+
+/// The decision behind `shell_for_this_platform`, with the environment passed in.
+fn shell_for(config: &TerminalConfig, env_shell: Option<&str>) -> Result<String, SessionError> {
     let ShellConfig { windows, unix } = &config.shell;
     let candidates = if cfg!(windows) { windows } else { unix };
     // `$SHELL` is a Unix convention and is honoured only there.
@@ -74,12 +82,8 @@ pub fn shell_for_this_platform(config: &TerminalConfig) -> Result<String, Sessio
     // `no_candidate_yields_a_stated_reason_not_a_panic` on a developer machine.
     //
     // `%COMSPEC%` is deliberately not consulted either (core::terminal::config).
-    let env_shell = if cfg!(windows) {
-        None
-    } else {
-        std::env::var("SHELL").ok()
-    };
-    resolve_shell(candidates, env_shell.as_deref(), &|program| {
+    let env_shell = if cfg!(windows) { None } else { env_shell };
+    resolve_shell(candidates, env_shell, &|program| {
         which::which(program).is_ok()
     })
     .map_err(|e| SessionError::Spawn(e.to_string()))
@@ -118,10 +122,14 @@ mod tests {
 
     #[test]
     fn no_candidate_yields_a_stated_reason_not_a_panic() {
-        let err = shell_for_this_platform(&config(
-            &["steward-nonexistent.exe"],
-            &["/steward/nonexistent"],
-        ))
+        // The environment is passed as `None` rather than left to the host: on Unix a real
+        // `$SHELL` names a real shell, which would be honoured over these candidates and
+        // turn the refusal under test into a success. This failed on CI's Linux runners
+        // for exactly that reason while passing on Windows, where `$SHELL` is ignored.
+        let err = shell_for(
+            &config(&["steward-nonexistent.exe"], &["/steward/nonexistent"]),
+            None,
+        )
         .expect_err("nothing configured exists");
         match err {
             SessionError::Spawn(reason) => assert!(
@@ -137,13 +145,32 @@ mod tests {
     fn an_inherited_unix_shell_variable_is_ignored_on_windows() {
         // Git Bash, MSYS and Cygwin all export $SHELL on Windows. Honouring it would make
         // the terminal you get depend on how the app was launched.
-        std::env::set_var("SHELL", "C:/Program Files/Git/bin/bash.exe");
-        let chosen = shell_for_this_platform(&config(&["cmd.exe"], &["/bin/sh"]))
-            .expect("cmd.exe exists on every Windows machine");
+        //
+        // Handed in rather than set with `std::env::set_var`: the environment is process
+        // global and Rust runs tests in threads, so writing it here would reach whatever
+        // else is running alongside.
+        let chosen = shell_for(
+            &config(&["cmd.exe"], &["/bin/sh"]),
+            Some("C:/Program Files/Git/bin/bash.exe"),
+        )
+        .expect("cmd.exe exists on every Windows machine");
         assert!(
             chosen.to_ascii_lowercase().contains("cmd"),
             "the configured Windows candidate wins over an inherited $SHELL, got {chosen}"
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn the_environments_shell_is_honoured_on_unix() {
+        // The positive of the rule above, and the reason the platform split exists at all:
+        // where `$SHELL` is the convention, a present one outranks the configured list.
+        let chosen = shell_for(
+            &config(&["cmd.exe"], &["/steward/nonexistent"]),
+            Some("/bin/sh"),
+        )
+        .expect("/bin/sh exists on every Unix machine");
+        assert_eq!(chosen, "/bin/sh");
     }
 
     #[test]
