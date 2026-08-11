@@ -19,7 +19,7 @@ flowchart TB
     end
 
     subgraph root["composition root — lib.rs"]
-        cmds["terminal_open / write / resize / close / config<br/><i>thin: translate and delegate</i>"]
+        cmds["terminal_open / write / resize / interrupt / close / config<br/><i>thin: translate and delegate</i>"]
         gate{{"composition == application?"}}
         state["Sessions: Mutex&lt;Registry&gt;<br/>Spawner: Box&lt;dyn PtySpawner&gt;"]
     end
@@ -35,6 +35,7 @@ flowchart TB
     subgraph adapters["adapters — everything that touches the OS"]
         ipc["terminal_ipc.rs<br/><i>Channel ↔ bytes, shell choice</i>"]
         ptyimpl["pty.rs — NativePtySpawner<br/><i>implements the ports</i>"]
+        ctrl["console_ctrl.rs — Windows only<br/><i>raises CTRL_C_EVENT</i>"]
     end
 
     shell["OS shell<br/>pwsh · zsh · sh"]
@@ -46,12 +47,14 @@ flowchart TB
     cmds -.-> ipc
     ipc -.-> port
     ptyimpl -- implements --> port
+    ptyimpl -- "interrupt, on Windows" --> ctrl
     ptyimpl <== "PTY: ConPTY / openpty" ==> shell
+    ctrl -- "console control event" --> shell
 
     classDef pure fill:#eef7ee,stroke:#4a7,stroke-width:1px
     classDef edge fill:#fff4e6,stroke:#d90,stroke-width:1px
     class core,registry,session,port pure
-    class adapters,ipc,ptyimpl edge
+    class adapters,ipc,ptyimpl,ctrl edge
 ```
 
 Dependencies point inward. `core::terminal` imports nothing from `adapters`, nothing from
@@ -100,6 +103,46 @@ base64 over the densest traffic in the application and make every listener parse
 that concerns one surface. The two event names are described in
 [`schemas/terminal.events.asyncapi.yaml`](../../app/src-tauri/schemas/terminal.events.asyncapi.yaml);
 output deliberately appears nowhere in that document, because it is not a domain fact.
+
+## Interrupting is not a byte
+
+Everything else about a session is byte-transparent in both directions. Interrupting is not,
+because on Windows **no sequence of bytes written to the input stream becomes a control event
+for a running command** — five candidate explanations for a missing conversion were refuted by
+measurement before that conclusion was reached. So the interrupt is an operation of its own,
+beside `write`, and it is the one place the adapter talks to the operating system rather than
+to the terminal.
+
+```mermaid
+flowchart TB
+    chord["interrupt chord in the surface"] --> obs["terminal.js reads<br/>buffer.active.type"]
+    obs -- "reports, never decides" --> cmd["terminal_interrupt(session, fullScreen)"]
+    cmd --> reg["Registry — unknown? ended?"]
+    reg --> plat{{"platform"}}
+    plat -- unix --> byte["write 0x03 to the PTY<br/><i>line discipline decides</i>"]
+    plat -- windows --> pres{{"full-screen program?"}}
+    pres -- yes --> byte2["write 0x03 to the PTY<br/><i>the chord is its input</i>"]
+    pres -- no --> ev["console_ctrl: attach → guard →<br/>GenerateConsoleCtrlEvent → detach"]
+
+    classDef edge fill:#fff4e6,stroke:#d90,stroke-width:1px
+    class ev,byte,byte2 edge
+```
+
+Two things in that path are counter-intuitive enough to be worth stating, both measured:
+
+- **The surface reports; the core decides.** Whether a full-screen program holds the keyboard
+  is something only the emulator can see — the console will not report it through ConPTY
+  (`ENABLE_PROCESSED_INPUT` stays set), and re-deriving it from the byte stream would put a
+  second terminal emulator in the adapter. So `terminal.js` sends the observation and
+  `core::terminal` decides what it means, exactly as it does with the size the surface reports.
+- **The guard against our own event is a handler routine, not the documented ignore flag.**
+  The event is delivered asynchronously, so the flag has to be cleared after a window that
+  cannot be timed; and the flag is inherited by child processes, where a handler routine is
+  not. Getting this wrong terminates the application instead of the command — it did, three
+  times, before it was right.
+
+Unix needs none of this: the line discipline already raises `SIGINT` for the foreground
+process group, or hands the byte to a program that asked for raw input.
 
 ## Two threads per session, and why
 
@@ -156,6 +199,7 @@ flowchart TB
 | Which shell starts, scrollback bound                 | `config/app.config.json` → `core::terminal::config` |
 | Session identity, size validity, exit classification | `core::terminal`                                    |
 | PTY allocation, threads, reaping                     | `adapters/pty.rs`                                   |
+| Raising a console control event (Windows)            | `adapters/console_ctrl.rs`                          |
 | Channel and raw-body translation                     | `adapters/terminal_ipc.rs`                          |
 | Wiring, gating, event emission                       | `lib.rs`                                            |
 | Rendering, input encoding, scrollback                | `app/packs/terminal/`                               |

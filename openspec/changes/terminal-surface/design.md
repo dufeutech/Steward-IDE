@@ -167,10 +167,11 @@ answer it, which is why `tests/terminal_pty.rs` carries a four-line answerback. 
 rules out ever "simplifying" the surface into a write-only log view — a terminal that cannot
 reply is not a terminal, and on Windows it does not even reach a prompt.
 
-### D4c — The interrupt chord does not reach a running child on Windows **[open defect]**
+### D4c — The interrupt chord does not reach a running child on Windows **[resolved elsewhere]**
 
-**Measured during hand verification (task 7.3). Not fixed — recorded so the next session
-starts from the measurement rather than the symptom.**
+**Measured during hand verification (task 7.3), and fixed by the follow-up change
+`terminal-interrupt-signal` rather than here.** The measurements below stand — they are what
+made the fix findable — and the resolution is recorded at the end.
 
 Ctrl+C in the running application cancels the shell's own prompt line — `abcdefgh^C`
 followed by a fresh prompt — but does **not** stop a child the shell is running. `ping -t`
@@ -203,18 +204,26 @@ comparable, and every one of them came back at ~21s, meaning `ping` ran to compl
 Also worth carrying: the failure reproduces from a **console** process (`cargo test`), so it
 is not about the app being a GUI process with no console of its own.
 
-What remains unexplained is why Windows Terminal succeeds where the same ConPTY, driven the
-same way, does not. The next candidate — untested — is that the fix does not belong in the
-byte stream at all: `AttachConsole` onto the session's shell followed by
-`GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0)`, which is how a terminal raises a control event
-rather than hoping conhost synthesises one. That is a real design decision (attaching a
-console to a GUI process, and not catching the event ourselves), so it belongs in a scoped
-follow-up with its own ADR, not in this change.
+**Resolved: the fix was never in the byte stream.** The remaining candidate was right — a
+terminal *raises* the control event rather than hoping conhost synthesises one from a byte.
+`AttachConsole` onto the session's shell followed by `GenerateConsoleCtrlEvent(CTRL_C_EVENT,
+0)` stops `ping -n 25` and returns the shell to a prompt in **52.7 ms**, against the ~21 s
+run-to-completion signature every candidate above produced. That is why nothing here found
+it: all five looked for a conversion that does not exist.
 
-This is a defect in the session layer, not in the pack. It does not block publishing (a
-terminal that cannot interrupt is still a working terminal for everything else), and it is
-not silently acceptable either — the spec's input routing assumes the session receives what
-a terminal session receives.
+The work is `openspec/changes/terminal-interrupt-signal/`, which carries its own ADRs for
+attaching a console to a windowed process and for what the event is scoped to. Two things it
+learned are worth knowing before reading this section again:
+
+- The documented `SetConsoleCtrlHandler(NULL, TRUE)` guard **does not work** — it kills the
+  application on the first interrupt. Delivery is asynchronous, and three separate shapes of
+  the guard fail before one holds. Its design D2 records all four.
+- `ENABLE_PROCESSED_INPUT` does not travel through ConPTY, so the console cannot be asked
+  whether a full-screen program owns the keyboard. The emulator is asked instead.
+
+This was a defect in the session layer, not in the pack. It did not block publishing — a
+terminal that cannot interrupt is still a working terminal for everything else — which is why
+it was carried rather than fixed in place.
 
 ### D5 — Session state is a registry in the composition root, never ambient
 

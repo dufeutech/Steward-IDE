@@ -47,6 +47,15 @@ The window opens at `pack://localhost` — a custom protocol served by the Rust 
    or press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>`</kbd> to open a shell. Hiding the panel
    does not end the session.
 
+> **<kbd>Ctrl</kbd>+<kbd>C</kbd> is a command, not a byte.** Every other keystroke reaches the
+> shell through `terminal_write` as bytes; the interrupt chord does not, because on Windows no
+> byte written to the input stream ever becomes a control event for a running command. It goes
+> through `terminal_interrupt` instead, and the surface reports with it whether a full-screen
+> program is presenting — that is what decides whether the chord is delivered as a signal or as
+> input. If you are looking for interrupt handling near `terminal_write`, it is not there:
+> [`adapters/console_ctrl.rs`](app/src-tauri/src/adapters/console_ctrl.rs) and
+> [`docs/architecture/terminal-sessions.md`](docs/architecture/terminal-sessions.md#interrupting-is-not-a-byte).
+
 > **Two application packs now compose the page**, and `compose()` presents the application
 > only when _every_ application pack resolves. If the `terminal` pack cannot be acquired you
 > get the bootstrap surface and **no editor** — not a working editor with the terminal
