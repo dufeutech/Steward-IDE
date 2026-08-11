@@ -87,5 +87,8 @@ rules:
     - Implement each behavior once in the core; keep entry points as thin translators.
     - No business logic, branching, or state outside the core.
     - Keep templates/migrations/config/schemas in external native-format files; load, don't inline.
-    - Define each value once: constants beside their owning concept, tunable config centralized
-        behind a config adapter. No magic literals, no duplicated values. See .canon/guidelines.md.
+    # Quoted because of the colon: unquoted, YAML reads "Define each value once" as a key and
+    # turns this item into a map, which fails the "array of strings" check and silently
+    # discards *every* rule in this block.
+    - "Define each value once: constants beside their owning concept, tunable config centralized
+        behind a config adapter. No magic literals, no duplicated values. See .canon/guidelines.md."
