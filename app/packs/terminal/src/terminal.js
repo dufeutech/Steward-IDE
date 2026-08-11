@@ -26,9 +26,10 @@ const APPLICATION = "application";
 const TOGGLE = (e) =>
   e.ctrlKey && e.shiftKey && (e.code === "Backquote" || e.key === "~");
 
-/// The interrupt chord. Routed to the session as an interrupt rather than as `\x03`,
-/// because on Windows no byte written to the input stream becomes a control event for a
-/// running command — see the `terminal-interrupt-signal` change.
+/// The interrupt chord. Routed through `terminal_interrupt` rather than as `\x03` through
+/// `terminal_write`, because the specification names interrupting as an operation with a
+/// refusal of its own. What it sends is the same `0x03` any terminal sends; the platform
+/// decides what that means — see the `terminal-interrupt-signal` change, design D2.
 ///
 /// Shift is excluded deliberately: Ctrl+Shift+C is a different chord and must not be
 /// swallowed here. This does *not* bind Ctrl+C to a surface action — the chord still goes
