@@ -35,7 +35,7 @@ flowchart TB
     subgraph adapters["adapters — everything that touches the OS"]
         ipc["terminal_ipc.rs<br/><i>Channel ↔ bytes, shell choice</i>"]
         ptyimpl["pty.rs — NativePtySpawner<br/><i>implements the ports</i>"]
-        ctrl["console_ctrl.rs — Windows only<br/><i>raises CTRL_C_EVENT</i>"]
+        ctrl["console_ctrl.rs — Windows only<br/><i>clears the inherited ignore attribute</i>"]
     end
 
     shell["OS shell<br/>pwsh · zsh · sh"]
@@ -47,9 +47,9 @@ flowchart TB
     cmds -.-> ipc
     ipc -.-> port
     ptyimpl -- implements --> port
-    ptyimpl -- "interrupt, on Windows" --> ctrl
+    ptyimpl -- "before the first spawn, on Windows" --> ctrl
     ptyimpl <== "PTY: ConPTY / openpty" ==> shell
-    ctrl -- "console control event" --> shell
+    ctrl -. "makes control events deliverable" .-> shell
 
     classDef pure fill:#eef7ee,stroke:#4a7,stroke-width:1px
     classDef edge fill:#fff4e6,stroke:#d90,stroke-width:1px
@@ -104,45 +104,56 @@ that concerns one surface. The two event names are described in
 [`schemas/terminal.events.asyncapi.yaml`](../../app/src-tauri/schemas/terminal.events.asyncapi.yaml);
 output deliberately appears nowhere in that document, because it is not a domain fact.
 
-## Interrupting is not a byte
+## Interrupting is a byte — and what had to be fixed for that to be true
 
-Everything else about a session is byte-transparent in both directions. Interrupting is not,
-because on Windows **no sequence of bytes written to the input stream becomes a control event
-for a running command** — five candidate explanations for a missing conversion were refuted by
-measurement before that conclusion was reached. So the interrupt is an operation of its own,
-beside `write`, and it is the one place the adapter talks to the operating system rather than
-to the terminal.
+Interrupting is byte-transparent like everything else about a session: `interrupt()` writes
+`0x03` to the PTY, and the platform decides what that means where the program's input actually
+arrives. Unix's line discipline raises `SIGINT` for the foreground process group, or hands the
+byte to a program that asked for raw input; `conhost` does the same on a pseudoconsole. One
+implementation, both platforms.
+
+It is still an operation of its own rather than a pattern recognised inside `write`, because
+the specification names it: it has a refusal of its own when the session is unknown or ended,
+and a paste containing `0x03` must stay a paste.
 
 ```mermaid
 flowchart TB
-    chord["interrupt chord in the surface"] --> obs["terminal.js reads<br/>buffer.active.type"]
-    obs -- "reports, never decides" --> cmd["terminal_interrupt(session, fullScreen)"]
+    chord["interrupt chord in the surface"] --> cmd["terminal_interrupt(session)"]
     cmd --> reg["Registry — unknown? ended?"]
-    reg --> plat{{"platform"}}
-    plat -- unix --> byte["write 0x03 to the PTY<br/><i>line discipline decides</i>"]
-    plat -- windows --> pres{{"full-screen program?"}}
-    pres -- yes --> byte2["write 0x03 to the PTY<br/><i>the chord is its input</i>"]
-    pres -- no --> ev["console_ctrl: attach → guard →<br/>GenerateConsoleCtrlEvent → detach"]
+    reg --> byte["write 0x03 to the session's PTY"]
+    byte --> plat{{"the platform decides, per program"}}
+    plat -- "processed input on" --> sig["control event / SIGINT<br/>for the running command"]
+    plat -- "program took raw control" --> inp["delivered as input<br/>to that program"]
 
     classDef edge fill:#fff4e6,stroke:#d90,stroke-width:1px
-    class ev,byte,byte2 edge
+    class byte edge
 ```
 
-Two things in that path are counter-intuitive enough to be worth stating, both measured:
+**On Windows that only works if the application clears an attribute it inherited**, which is
+what `console_ctrl.rs` does, once, before the first session is spawned:
 
-- **The surface reports; the core decides.** Whether a full-screen program holds the keyboard
-  is something only the emulator can see — the console will not report it through ConPTY
-  (`ENABLE_PROCESSED_INPUT` stays set), and re-deriving it from the byte stream would put a
-  second terminal emulator in the adapter. So `terminal.js` sends the observation and
-  `core::terminal` decides what it means, exactly as it does with the size the surface reports.
-- **The guard against our own event is a handler routine, not the documented ignore flag.**
-  The event is delivered asynchronously, so the flag has to be cleared after a window that
-  cannot be timed; and the flag is inherited by child processes, where a handler routine is
-  not. Getting this wrong terminates the application instead of the command — it did, three
-  times, before it was right.
+```mermaid
+flowchart LR
+    launcher["launcher<br/><i>CREATE_NEW_PROCESS_GROUP</i>"] -- "ignore Ctrl+C<br/>(inherited)" --> app["the application"]
+    app -- "would inherit it" --> conhost["conhost<br/><i>CreatePseudoConsole</i>"]
+    conhost -- "would inherit it" --> shell["shell → command"]
+    app -- "SetConsoleCtrlHandler(NULL, FALSE)<br/>before the first spawn" --> fix(["attribute cleared"])
 
-Unix needs none of this: the line discipline already raises `SIGINT` for the foreground
-process group, or hands the byte to a program that asked for raw input.
+    classDef edge fill:#fff4e6,stroke:#d90,stroke-width:1px
+    class fix edge
+```
+
+Two things there are counter-intuitive enough to be worth stating, both measured:
+
+- **The attribute is inherited; a handler routine is not.** That asymmetry is the whole
+  mechanism. Clearing the attribute would leave this process killable by a Ctrl+C in the
+  terminal that launched it, so a handler routine is registered first — and because routines
+  are not inherited, the sessions started afterwards keep the terminating default that makes an
+  interrupt an interrupt.
+- **The attribute suppressed _every_ route, not just the byte.** A control event raised
+  deliberately with `GenerateConsoleCtrlEvent`, from this process or from a helper, reached no
+  process either. That is what made the defect look like a missing byte→event conversion for
+  two sessions of searching; there was no missing conversion.
 
 ## Two threads per session, and why
 
@@ -199,7 +210,7 @@ flowchart TB
 | Which shell starts, scrollback bound                 | `config/app.config.json` → `core::terminal::config` |
 | Session identity, size validity, exit classification | `core::terminal`                                    |
 | PTY allocation, threads, reaping                     | `adapters/pty.rs`                                   |
-| Raising a console control event (Windows)            | `adapters/console_ctrl.rs`                          |
+| Making control events deliverable (Windows)          | `adapters/console_ctrl.rs`                          |
 | Channel and raw-body translation                     | `adapters/terminal_ipc.rs`                          |
 | Wiring, gating, event emission                       | `lib.rs`                                            |
 | Rendering, input encoding, scrollback                | `app/packs/terminal/`                               |

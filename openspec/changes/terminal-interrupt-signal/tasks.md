@@ -1,6 +1,6 @@
 ## 1. Gate the decisions before writing any of it
 
-- [x] 1.1 Ran `/ai:decide` on 2026-08-10 and recorded three approved ADRs in this change's `design.md`: raising the control event (**Build**, in-process and guarded — nothing exists to adopt), the Windows binding (**Adopt** `windows-sys`), and what scopes the interrupt (**Build**, console attachment with process group `0`). The platform behaviour behind D2 step 6 and D3 was read from Microsoft's reference and folded back into those decisions
+- [x] 1.1 Ran `/ai:decide` on 2026-08-10 and recorded three ADRs in this change's `design.md`. **Two were later reversed by measurement**, on the same date: delivering the interrupt is now **Adopt the platform mechanism** (it was Build, in-process, then Build, in a helper — both refuted), and scoping is now **Adopt the pseudoconsole's own scope**. The Windows binding (**Adopt** `windows-sys`) stands. What forced the reversal is in D2; the research that found it — that no terminal raises the event itself, and that `node-pty` makes one corrective call `portable-pty` omits — is the step the first pass skipped
 - [x] 1.2 Added this change's ADR line to `DECISIONS.md`'s change-scoped index
 
 ## 2. Measure before building (design D2 Risks: "the whole hypothesis is wrong")
@@ -13,49 +13,49 @@
 
 ## 3. Core: the operation and its addressing rules
 
-- [x] 3.1 `Pty::interrupt(&mut self, presenting: Presenting)` added to the port, along with the `Presenting` vocabulary the surface reports through it (design D3). No Windows type and no `portable_pty` type crosses into the core
+- [x] 3.1 `Pty::interrupt(&mut self)` on the port. **`Presenting` was added and then removed** — D3 is withdrawn, so nothing is passed with the interrupt. No Windows type and no `portable_pty` type crosses into the core
 - [x] 3.2 `Registry::interrupt` added, routed through `live_mut` so `Unknown` and `Ended` come from the one place that already decides them
-- [x] 3.3 `FakePty` records interrupts; four tests cover "Only the addressed session is interrupted", "Interrupting a session that has ended", the unknown-identifier arm, and that the surface's observation reaches the port unchanged rather than being normalised in transit
+- [x] 3.3 `FakePty` counts interrupts; three tests cover "Only the addressed session is interrupted", "Interrupting a session that has ended", and the unknown-identifier arm. The fourth — that the surface's observation reaches the port unchanged — went with `Presenting`
 
 ## 4. Adapter: the platform split
 
-- [x] 4.1 `windows-sys` added as a `[target.'cfg(windows)'.dependencies]` entry with the four features the six calls need, and the comment saying why the binding is adopted rather than hand-declared
-- [x] 4.2 The shell's process identifier is taken before the child is moved into the waiter thread, and held on `NativePty`
-- [x] 4.3 Unix `interrupt()` writes the interrupt character and nothing else (design D4)
-- [x] 4.4 Windows `interrupt()` is the corrected D2 sequence, promoted out of the spike into `adapters/console_ctrl.rs` — its own module rather than more of `pty.rs`, since it is the only code in the repository that calls the Windows API. Every failure arm returns `SessionError::Io` naming what failed
-- [x] 4.5 The delivery branch is the surface's observation, not a console probe — the probe does not work (2.4). `Presenting::FullScreen` writes the byte; `Presenting::Normally` raises the event
-- [x] 4.6 **Reframed by the measurement.** Mutual exclusion with session creation is no longer needed for correctness: the inheritance hazard belonged to the ignore attribute, and a handler routine is not inherited. Proven by `a_session_started_after_an_interrupt_is_still_interruptible`. The process-global console lock is still in place, because console attachment is per-process
+- [x] 4.1 `windows-sys` added as a `[target.'cfg(windows)'.dependencies]` entry, and the comment saying why the binding is adopted rather than hand-declared. One call survives the D2 reversal (`SetConsoleCtrlHandler`); the decision is unchanged
+- [x] 4.2 **Removed by D2.** The shell's process identifier was carried on `NativePty` to find a console to raise at. Nothing looks it up now
+- [x] 4.3 `interrupt()` writes the interrupt character and nothing else — **on both platforms** (design D4). The two arms collapsed into one when D2 was corrected
+- [x] 4.4 `adapters/console_ctrl.rs` survives, reduced to one function: `enable_interrupts_for_sessions`, called by the spawner before the first session and never again. Still its own module, since it is still the only code in the repository that calls the Windows API. The attach/raise sequence it used to hold is deleted
+- [x] 4.5 **Removed by D2.** There is no delivery branch: `conhost` and the line discipline each make that distinction themselves, which is why the surface has nothing to report
+- [x] 4.6 **Now trivially satisfied.** Interrupting is a write to one session's PTY, so there is no process-global console state to serialise and the lock is gone. `a_session_started_after_an_interrupt_is_still_interruptible` still guards the property
 
 ## 5. Command surface and capability grant
 
-- [x] 5.1 `terminal_interrupt` added to `lib.rs` — session identifier and the surface's observation in, `Result<(), String>` out, the same `reason` mapping the other commands use, and no logic of its own (the `bool` → `Presenting` translation is `terminal_ipc`'s, with a test that it cannot silently invert)
+- [x] 5.1 `terminal_interrupt` added to `lib.rs` — session identifier in, `Result<(), String>` out, the same `reason` mapping the other commands use, and no logic of its own. The `full_screen` argument and its `terminal_ipc` translation were added and then removed with D3
 - [x] 5.2 Registered in `invoke_handler` and declared in `build.rs`'s `AppManifest::commands`; `tauri-build` generated `allow-terminal-interrupt` from it
 - [x] 5.3 Granted in `capabilities/terminal.json` alongside `allow-terminal-write`. The negative case is structural rather than newly tested: an undeclared command is unreachable and an ungranted one is denied, which is what 5.2 and this row establish together — a window without the grant never reaches the command
 
 ## 6. The surface
 
-- [x] 6.1 The chord is recognised in the existing `attachCustomKeyEventHandler` (keydown only, Shift excluded so Ctrl+Shift+C is untouched), returns `false` so xterm does not also emit `\x03`, and invokes `terminal_interrupt` carrying `buffer.active.type === "alternate"`
+- [x] 6.1 The chord is recognised in the existing `attachCustomKeyEventHandler` (keydown only, Shift excluded so Ctrl+Shift+C is untouched), returns `false` so xterm does not also emit the byte, and invokes `terminal_interrupt` for the session. The alternate-buffer read went with D3
 - [x] 6.2 A refused interrupt is reported the way a refused write is, leaving the session presented as it was
 - [x] 6.3 Pack rebuilt and `manifest.json` regenerated; `packpub manifest --verify` reports the tree matches
 
 ## 7. Verification
 
-- [x] 7.1 `scenario_a_running_command_is_interrupted` in `tests/terminal_pty.rs`, through the real adapter rather than the spike: the command stops, the session survives, and it executes input afterwards. Also `scenario_an_idle_session_is_interrupted` and `a_full_screen_program_receives_the_chord_as_input`, which is the D3 branch
+- [x] 7.1 `scenario_a_running_command_is_interrupted` in `tests/terminal_pty.rs`, through the real adapter: the command stops, the session survives, and it executes input afterwards. Also `scenario_an_idle_session_is_interrupted`. `a_full_screen_program_receives_the_chord_as_input` was deleted with D3 — it asserted a branch that no longer exists, and the property it named is the platform's
 - [x] 7.2 `scenario_the_interrupt_reaches_what_the_command_started` — the shell runs a child which runs the long command; if only the immediate child were signalled the shell could not answer inside the budget
-- [ ] 4.7 **Ship the helper in the bundle.** It runs in development because cargo puts it beside the application binary; a packaged build has no such luck. `bundle.externalBin` in `tauri.conf.json` is the mechanism, and it wants a `steward-interrupt-<target-triple>.exe` produced by a build step. Not done — and until it is, a packaged application cannot interrupt at all
-- [ ] 7.3 **Run by hand, and it fails — see design D2a.** A local two-pack endpoint was signed and verified (105 targets), the app run against it, and the chord driven with `appdrive`. The surface path is proven correct: `terminal_interrupt` arrives with `full_screen=false` and returns `Ok(())`. The command does not stop — measured as `ping.exe` alive before and after, not read off a screenshot. Four candidates refuted, including ADR 1's helper fallback, which was built and still fails. The last measurement moves the problem: run **by hand from an ordinary shell**, the helper kills `ping` on a pseudoconsole made by `cargo test` and not on one made by the application, so the variable is the application's pseudoconsole rather than anything about raising. The remaining sub-items were not reached
-- [ ] 7.4 Not reached — blocked on 7.3
-- [x] 7.5 Every row in `.canon/checks.md` run and passing: `cargo fmt --check`, markdown formatter, `cargo clippy --all-targets -- -D warnings`, `go vet`, both builds, 121 Rust tests, packpub's 22 and appdrive's 15, pack payload against its manifest, addon pairing, doc links, file sizes, embedded size, trust anchor. **Unverified: Unix** — no host, so `deliver_interrupt`'s Unix arm has never run; the same gap `terminal-surface` task 7.4 carries
+- [x] 4.7 **Dissolved, not done.** There is no helper to bundle: the binary, its `bundle.externalBin` entry and the build step it needed all went with D2. A packaged application interrupts with the same one call every other build makes
+- [x] 7.3 **Run in the running application, and it works — see design D2.** The earlier by-hand run failed, and so did four candidates chased from that failure. What closed it was research rather than another candidate: no terminal raises the control event itself, and the one call `node-pty` makes that `portable-pty` omits is the whole fix. Measured inside the application process started by `npm run tauri dev`, driving the production spawner: `ping` stops (replies 3 → 3). The control, in that same process, is putting the inherited attribute back — replies 3 → 6, the original defect exactly. **The terminal panel itself was not driven this time**, because the `terminal` pack is not in the local store and rebuilding the endpoint would not have exercised anything the probe missed: the surface path was already proven correct in the previous run
+- [ ] 7.4 Not reached — the terminal panel has not been driven since the fix, for the reason in 7.3. Worth doing when the local endpoint is next stood up
+- [x] 7.5 Every row in `.canon/checks.md` re-run after the reversal: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, both builds, 114 Rust tests, pack payload against its regenerated manifest, addon pairing. **Unverified: Unix** — no host, so `interrupt()` has never run there; the same gap `terminal-surface` task 7.4 carries. One flake seen and not reproduced: `scenario_size_is_established_at_start` failed once under full parallel load and passed alone and on re-run
 
 ## 8. Documentation
 
-- [x] 8.1 `terminal-surface`'s D4c now reads "resolved elsewhere", keeps its four refuted candidates, and carries the two findings worth knowing before re-reading it (the documented guard does not work; the console cannot be asked about raw mode). Its task 7.3 and the interrupt sub-item are closed
-- [x] 8.2 `docs/architecture/terminal-sessions.md` gains `console_ctrl.rs` in the shape diagram, a new "Interrupting is not a byte" section with the delivery-decision flow, and a row in the concerns table
-- [x] 8.3 `DEV.md` says the chord is a command rather than a byte, and points at `console_ctrl.rs` — the next person to look for it near `terminal_write` will not find it there
+- [x] 8.1 `terminal-surface`'s D4c keeps its refuted candidates and now states plainly that **its own conclusion was wrong** — the byte→event conversion exists; an inherited attribute suppressed it. Its Windows Terminal control row is re-read as the answer it nearly was. Its task 7.3 and the interrupt sub-item stay closed, and this time correctly
+- [x] 8.2 `docs/architecture/terminal-sessions.md`: the section is now "Interrupting is a byte", with one diagram for the delivery path and one for the inherited attribute, and `console_ctrl.rs` re-described in the shape diagram and the concerns table
+- [x] 8.3 `DEV.md` says the chord is a command that sends a byte, names the inherited attribute as the first thing to suspect if interrupts stop working, and states the lesson that cost two sessions: measure in the running application, not under `cargo test`
 
 ## 9. Close out
 
-- [x] 9.1 Reviewed the diff and split it into seven Conventional Commits by intent on branch `change/terminal-interrupt-signal` (Rule 3): the spike and its binding, the core operation and adapter, the command surface, the pack surface, the adapter tests, the documentation, and the change artifacts. No attribution trailers
-- [ ] 9.2 Publish the rebuilt terminal pack as a signed release, per `docs/runbooks/pack-publishing.md`, and verify the published tree from a clean profile
+- [x] 9.1 Reviewed the diff and split it into seven Conventional Commits by intent on branch `change/terminal-interrupt-signal` (Rule 3). **The reversal is not yet committed** — see the working tree
+- [ ] 9.2 Publish the rebuilt terminal pack as a signed release, per `docs/runbooks/pack-publishing.md`, and verify the published tree from a clean profile. Not urgent for correctness: the old surface sends an argument the new command does not take, and Tauri ignores unknown arguments, so an installed application keeps working either way
 - [ ] 9.3 Run `/opsx:sync` to fold the delta specs into the main specs — after `terminal-surface` has synced, never before (its specs are the base these deltas apply to)
 - [ ] 9.4 Run `/opsx:archive` to close the change

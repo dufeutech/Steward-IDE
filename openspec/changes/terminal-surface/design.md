@@ -204,22 +204,42 @@ comparable, and every one of them came back at ~21s, meaning `ping` ran to compl
 Also worth carrying: the failure reproduces from a **console** process (`cargo test`), so it
 is not about the app being a GUI process with no console of its own.
 
-**Resolved: the fix was never in the byte stream.** The remaining candidate was right — a
-terminal *raises* the control event rather than hoping conhost synthesises one from a byte.
-`AttachConsole` onto the session's shell followed by `GenerateConsoleCtrlEvent(CTRL_C_EVENT,
-0)` stops `ping -n 25` and returns the shell to a prompt in **52.7 ms**, against the ~21 s
-run-to-completion signature every candidate above produced. That is why nothing here found
-it: all five looked for a conversion that does not exist.
+**Resolved — and the conclusion this section drew was wrong.** "What is missing is the
+conversion from the 0x03 byte to a `CTRL_C_EVENT`" is false: the conversion exists and works.
+`conhost` performs it on a pseudoconsole, which is what VS Code and every other Windows
+terminal rely on and the only thing they do. Writing the byte stops `ping -n 25` under both
+`cmd.exe` and `powershell.exe` on this machine.
 
-The work is `openspec/changes/terminal-interrupt-signal/`, which carries its own ADRs for
-attaching a console to a windowed process and for what the event is scoped to. Two things it
-learned are worth knowing before reading this section again:
+The cause is not in the terminal at all. `CREATE_NEW_PROCESS_GROUP` carries an "ignore Ctrl+C"
+attribute that is **inherited by every child**, so a launcher that sets it hands it to the
+application, to the `conhost` behind the pseudoconsole, to the shell, and to `ping`. Nothing on
+that pseudoconsole can then receive a control event — from `conhost` or from anyone else. One
+call before the first spawn, `SetConsoleCtrlHandler(NULL, FALSE)`, clears it; Microsoft's
+`node-pty` makes exactly that call, and `portable-pty` does not.
 
-- The documented `SetConsoleCtrlHandler(NULL, TRUE)` guard **does not work** — it kills the
-  application on the first interrupt. Delivery is asynchronous, and three separate shapes of
-  the guard fail before one holds. Its design D2 records all four.
+**Why the probes above pointed the wrong way, and what they are still good for.** Every
+candidate here looked for the fault in the terminal — the emulator, the input mode, the ConPTY
+build, the shell. Each is correctly refuted and together they are what eventually forced the
+search out of the terminal and into the process that creates the pseudoconsole. The Windows
+Terminal control row is the sharpest of them: same machine, same shell, same `ping`, and it
+works — which was always evidence that the platform mechanism is fine and *our process* is
+different. Read that row as the answer it nearly was.
+
+The `cargo test` row deserves a specific correction. "The failure reproduces from a console
+process" was taken to mean the application's GUI nature is not the variable; the variable is
+the **launcher**, and both a `cargo test` run and the app can be started with or without the
+flag. The measurement that settles it has to be taken inside the running application, which is
+what two later sessions of green test suites failed to do.
+
+The work is `openspec/changes/terminal-interrupt-signal/`, whose design D2 carries the cause,
+the five measurements, and the mechanisms it discarded on the way. Two things it learned that
+outlive the discarded approach:
+
 - `ENABLE_PROCESSED_INPUT` does not travel through ConPTY, so the console cannot be asked
-  whether a full-screen program owns the keyboard. The emulator is asked instead.
+  whether a full-screen program owns the keyboard. Moot for the interrupt — `conhost` makes
+  that distinction itself — but true of any other reason to ask.
+- The Ctrl+C ignore attribute is inherited by child processes; a handler *routine* is not.
+  That asymmetry is what makes clearing the attribute safe.
 
 This was a defect in the session layer, not in the pack. It did not block publishing — a
 terminal that cannot interrupt is still a working terminal for everything else — which is why

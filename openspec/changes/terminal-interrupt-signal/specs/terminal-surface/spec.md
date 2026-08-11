@@ -11,9 +11,7 @@ The interrupt chord MUST be routed to the session as an interrupt rather than on
 bytes, and MUST be routed exactly once — the surface MUST NOT both interrupt the session and
 send the chord as input for the same keypress. Routing it this way is not interception: the
 chord still reaches the session, and how it is finally delivered to the running program
-remains the session's decision, not the surface's. The surface MUST report, with the interrupt,
-whether a program is currently presenting full-screen, since only the surface can observe
-this; it MUST NOT decide the delivery itself.
+remains the session's decision, not the surface's.
 
 #### Scenario: Interrupting a running command
 - **WHEN** the user presses the interrupt chord while a long-running command is executing

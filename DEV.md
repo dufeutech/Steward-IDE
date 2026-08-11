@@ -47,14 +47,20 @@ The window opens at `pack://localhost` — a custom protocol served by the Rust 
    or press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>`</kbd> to open a shell. Hiding the panel
    does not end the session.
 
-> **<kbd>Ctrl</kbd>+<kbd>C</kbd> is a command, not a byte.** Every other keystroke reaches the
-> shell through `terminal_write` as bytes; the interrupt chord does not, because on Windows no
-> byte written to the input stream ever becomes a control event for a running command. It goes
-> through `terminal_interrupt` instead, and the surface reports with it whether a full-screen
-> program is presenting — that is what decides whether the chord is delivered as a signal or as
-> input. If you are looking for interrupt handling near `terminal_write`, it is not there:
+> **<kbd>Ctrl</kbd>+<kbd>C</kbd> is a command that sends a byte.** Every other keystroke reaches
+> the shell through `terminal_write`; the interrupt chord goes through `terminal_interrupt`,
+> because the specification names it as an operation with a refusal of its own — but what it
+> sends is the same `0x03` any terminal sends, and the platform decides what that means.
+>
+> **On Windows it only works because the application clears an attribute it inherited.**
+> `CREATE_NEW_PROCESS_GROUP` — which a launcher may set, and `npm run tauri dev` does — carries
+> an "ignore Ctrl+C" attribute down to every child, including the `conhost` behind the
+> pseudoconsole and everything the shell runs. If interrupts stop working, that is the first
+> thing to suspect, and the last two rows of the table in the change's design D2 are how to
+> tell: **measure in the running application, not under `cargo test`** — the launcher is the
+> variable and no test can vary it. See
 > [`adapters/console_ctrl.rs`](app/src-tauri/src/adapters/console_ctrl.rs) and
-> [`docs/architecture/terminal-sessions.md`](docs/architecture/terminal-sessions.md#interrupting-is-not-a-byte).
+> [`docs/architecture/terminal-sessions.md`](docs/architecture/terminal-sessions.md#interrupting-is-a-byte--and-what-had-to-be-fixed-for-that-to-be-true).
 
 > **Two application packs now compose the page**, and `compose()` presents the application
 > only when _every_ application pack resolves. If the `terminal` pack cannot be acquired you

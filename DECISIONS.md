@@ -22,10 +22,13 @@ Concrete tool names live here only — `.canon/` and `openspec/specs/` stay abst
   `Channel` + raw invoke body, execution boundary TUF + `AppManifest::commands` capability
   gating + a composition check):
   [openspec/changes/terminal-surface/design.md](openspec/changes/terminal-surface/design.md)
-- `terminal-interrupt-signal` (active) — 3 ADRs (raising a control event built in-process and
-  guarded, because nothing exists to adopt — `ctrlc` receives rather than sends; Windows
-  binding `windows-sys`; interrupt scoped by console attachment with process group `0`, the
-  only form the platform delivers for `CTRL_C_EVENT`):
+- `terminal-interrupt-signal` (active) — 3 ADRs, **two of them reversed by measurement on
+  2026-08-10** (delivering the interrupt: adopt the platform mechanism and write the byte,
+  after Build/in-process and Build/in-a-helper were each built and refuted; Windows binding
+  `windows-sys`, unchanged; scoping: adopt the pseudoconsole's own scope, replacing console
+  attachment with process group `0`). The reversal's cause — an inherited
+  `CREATE_NEW_PROCESS_GROUP` "ignore Ctrl+C" attribute, cleared by the one call `node-pty`
+  makes and `portable-pty` omits — is design D2:
   [openspec/changes/terminal-interrupt-signal/design.md](openspec/changes/terminal-interrupt-signal/design.md)
 - `bootstrap-pack-boot` (archived) — 2 ADRs (embedded-size budget enforcement hand-written,
   development materialization by extending packpub's assemble stage over `file://`):

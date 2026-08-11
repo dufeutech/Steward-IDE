@@ -13,6 +13,14 @@ interrupt chord reaches the shell's line editor — it cancels the prompt line a
 but never becomes a control event for a command the shell is running. `ping -t` and
 `timeout /t 30` survive it under both `powershell.exe` and `cmd.exe`.
 
+That symptom is real and reproducible. Its cause is not in the terminal at all, and is not what
+this document originally concluded; **D2 is the answer and everything before it is the search.**
+
+> **Corrected 2026-08-10.** The premise below — that the byte can never become a control
+> event here — is false, and D2 records the cause. The refutations are still accurate about
+> *what is not the problem*, and are kept for that: they are what narrowed the search to the
+> process that creates the pseudoconsole. Read them as "not this", not as "not the byte".
+
 **What is already refuted, by measurement, in `terminal-surface`'s D4c.** Do not re-run these:
 
 | Candidate                                                      | Result                                             |
@@ -98,232 +106,161 @@ the code (Rule 7).
 shell's identity — and the registry already owns exactly that mapping. Anything else would
 mean a second place that knows which shell belongs to which session.
 
-### D2 — Windows: attach to the session's console and raise the control event **[/ai:decide → ADR 1]**
+### D2 — Windows: the interrupt *is* the byte. What was broken is an inherited attribute **[/ai:decide → ADR 1]**
 
-**Decision:** on Windows the adapter interrupts by joining the session's console and raising
-the control event on it, rather than by writing a byte and hoping it is converted.
-Recommendation: **Build**, in the adapter, over an adopted binding (D5) — there is no crate to
-adopt for this (see the alternatives below).
+**Decision:** `interrupt()` writes the interrupt character to the pseudoconsole, on Windows
+exactly as on Unix (D4), and `conhost` turns it into a control event. The only Windows-specific
+work is one call made once, before the first session is spawned, which undoes something done to
+this process before it started. Recommendation: **Adopt the platform mechanism**; the code we
+own is a single line of correction, over an adopted binding (D5).
 
-The sequence, in `adapters::pty`, under a process-global lock (see the guards below):
+**D2b — the cause, and the fix.**
 
-1. Remember whether this process currently has a console of its own.
-2. `FreeConsole()` — a process may be attached to only one console at a time.
-3. `AttachConsole(shell_pid)` — join the pseudoconsole the session's shell is running on.
-   A shell that has already exited fails here, and that failure is a `SessionError::Io` with a
-   reason, not a panic.
-4. Decide the delivery form from the console's input mode (D3). If the running program has
-   taken raw control, detach and write the byte instead.
-5. `SetConsoleCtrlHandler(Some(handler), TRUE)` — register a handler that returns `TRUE` for
-   `CTRL_C_EVENT`, **after** the attach in step 3, so it is registered on the console being
-   raised at. Without this the application terminates itself along with the command.
-   *(Corrected by measurement — see "What the spike changed" below. This step originally read
-   `SetConsoleCtrlHandler(NULL, TRUE)`, the documented ignore attribute, placed here and
-   cleared in step 7. That kills the process every time.)*
-6. `GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0)`. The `0` means *every process sharing this
-   console*, which is precisely the session's shell and its descendants — this is the whole of
-   the scoping argument for the proposal's third critical concern, and it is why the interrupt
-   cannot reach a process outside the session. It is also the only value that works: the
-   platform reference states that `CTRL_C_EVENT` cannot be limited to a process group, and that
-   a nonzero group identifier makes the call *succeed* while delivering nothing (ADR 3).
-7. Wait, bounded, until our own handler has seen the event — then `FreeConsole()` and restore
-   the original console if there was one (`AttachConsole(ATTACH_PARENT_PROCESS)`). Nothing is
-   un-registered: `FreeConsole` drops the handler list by itself, so each attach starts empty
-   and exactly one registration exists at a time.
+`CREATE_NEW_PROCESS_GROUP` gives a process an "ignore Ctrl+C" attribute, and that attribute is
+**inherited by every child**. A launcher that uses the flag — which is exactly how a development
+runner stops Ctrl+C in its own terminal from killing what it started — hands the attribute to
+this application. This application then hands it to the `conhost` that `CreatePseudoConsole`
+spawns, to the shell, and to everything the shell runs. Nothing on that pseudoconsole can
+receive a control event afterwards, whether `conhost` synthesises one from a byte **or another
+process raises one with `GenerateConsoleCtrlEvent`**. One cause, both symptoms — which is why
+the byte path and the control-event path failed identically and why the event appeared to be
+"delivered to nobody".
 
-**What the spike changed.** Task 2.1–2.3, measured on 2026-08-10 in
-`app/src-tauri/tests/terminal_interrupt_windows.rs`. The hypothesis holds — but three details
-of the sequence above were wrong as first written, and each was found by the process killing
-itself with `STATUS_CONTROL_C_EXIT` (0xc000013a) rather than by argument:
+The fix is `SetConsoleCtrlHandler(NULL, FALSE)`, which clears the attribute for the calling
+process. Inheritance is fixed at child creation, so it must run **before** the shell is spawned;
+`adapters::pty::NativePtySpawner::spawn` calls it first, through a `Once`. A handler routine is
+registered immediately before it, because clearing the attribute re-arms the default handler
+(which calls `ExitProcess`) for this process — and handler routines, unlike the attribute, are
+**not** inherited, so the sessions started afterwards keep the terminating default that is what
+makes an interrupt an interrupt.
 
-| What was written                                                    | What happens                                                                          | Why |
-| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ----- |
-| `SetConsoleCtrlHandler(NULL, TRUE)` before the raise, cleared after | dies on the **first** raise                                                            | Delivery is asynchronous — the platform "creates a new thread in each client process" — so clearing the attribute re-arms the default handler, which calls `ExitProcess`, before our own event arrives. |
-| a real handler routine, registered once before the console switch   | dies on the first raise                                                                | `FreeConsole` drops the process's handler list, so the registration does not survive step 2. |
-| a real handler routine, registered after the attach, detach at once | dies on the first raise                                                                | Same cause, other end: `FreeConsole` in step 7 unregisters the handler before the event we just raised is delivered. |
-| a real handler routine, registered after the attach, **wait for our own delivery, then detach** | survives 100 consecutive raises                          | The guard is present for the whole window in which the event can arrive. |
+**This is what everyone else does.** Microsoft's `node-pty` — the pseudoconsole layer under VS
+Code's terminal, and the most exercised ConPTY consumer there is — makes exactly this call in
+`PtyStartProcess`, immediately after `CreatePseudoConsole` succeeds, under the comment
+"Restore default handling of ctrl+c". `portable-pty` omits it, which is why it has to be done
+here. No terminal emulator attaches to another process's console to deliver an interrupt.
 
-The handler routine is the better guard for a second reason the ignore attribute cannot
-match: handler routines are **not** inherited by child processes, where the ignore attribute
-is. The session's shell and its children therefore keep responding to interrupts normally —
-which is the entire point of raising one — and the inheritance hazard in the Risks below
-dissolves instead of needing a lock to contain it.
+**The measurements**, `tests/terminal_interrupt_windows.rs`, 2026-08-10. `ping -n 25` runs ~21 s,
+so "stopped" and "ran to completion" are never ambiguous:
 
-**The measurement that matters:** with the corrected sequence, `ping -n 25` under `cmd.exe`
-stops and the shell answers in **52.7 ms**. The refuted signature, shared by all five earlier
-candidates, is ~21 s — `ping` running to completion. The session survives, executes input
-afterwards, and the process is still attached to its original console with working stdout.
+| Condition | replies after writing `0x03` | |
+| ----------- | ------------------------------ | ---- |
+| an ordinary process, `cmd.exe` and `powershell.exe` | 3 → 3 | stopped |
+| a process created with `CREATE_NEW_PROCESS_GROUP` | 3 → 6 | kept running |
+| the same, after `SetConsoleCtrlHandler(NULL, FALSE)` before the spawn | 3 → 3 | stopped |
+| **the running application**, production path | 3 → 3 | **stopped** |
+| **the running application**, attribute deliberately restored | 3 → 6 | kept running |
 
-**It does not work in the application. [open defect — D2a]**
+The last two rows were taken inside the application process, started by `npm run tauri dev` —
+the launcher is the variable, so no test under `cargo test` could have produced them. The second
+of the two is the control: putting the attribute back in that same process reproduces the
+original failure exactly, so the attribute is the cause and not merely correlated with the fix.
 
-Every test above passes, and the interrupt still does nothing when a person presses the
-chord in the running app. Found by task 7.3, which is the only check that could have found
-it: the surface path is exercised nowhere else.
+**D2a — what this supersedes, and what the record should keep.**
 
-The surface is not implicated. `terminal_interrupt` arrives with `full_screen=false`,
-returns `Ok(())`, and the sequence reports success — the chord wiring, the command, the
-capability grant and the observation are all correct.
+Five candidates were refuted in `terminal-surface` D4c, and four more here, all on the premise
+that the byte path was unfixable and the answer was to raise the event ourselves. That premise
+was wrong, and the first row above is the correction: writing the byte works on this machine and
+always would have, given a process that had not inherited the attribute.
 
-What differs is the *process*, and the trace narrows it to one line:
+What the refuted work still establishes is worth keeping, because it is what narrowed the search:
+the fault is not in the emulator, the input mode, the ConPTY version, the shell, the thread, or
+the process that raises. D2a's own conclusion — "it is the pseudoconsole the application created,
+or something about the process that created it" — was correct, and pointed one step short of the
+answer. `console_ctrl.rs` even recorded that the ignore attribute is inherited by children,
+without asking whether this process had inherited one.
 
-| Where | `had_console` | attached, and sharing the shell's console | `GenerateConsoleCtrlEvent` | delivered to us | command stops |
-| ------- | --------------- | ------------------------------------------- | ---------------------------- | ----------------- | --------------- |
-| `cargo test`, console freed first | false | yes — `[me, conhost, shell]` | returns 1 | **true** | yes |
-| the running application            | false | yes — `[me, conhost, shell]` | returns 1 | **false** | no |
-
-The two are indistinguishable up to the raise: same shell (`powershell.exe`), same
-console membership, same return value. In the application the event reaches *nobody* —
-not the shell, not `ping`, not even this process, whose handler is registered and fires
-in the test. `GenerateConsoleCtrlEvent` succeeds and the event evaporates.
-
-Four candidates are refuted, and the last one moves the problem somewhere new:
-
-| Candidate | How it was tested | Result |
-| ----------- | ------------------- | -------- |
-| the application has no console of its own, unlike `cargo test` | `FreeConsole` first, then the production sequence against `powershell.exe` | refuted — `delivered_to_us=true`, command stops |
-| the sequence runs on the thread pumping the window message loop | moved onto a scoped thread of its own | refuted — identical trace, still `delivered_to_us=false` |
-| the application process is the problem, so raise from a helper | ADR 1's fallback, built and shipped as a bin target (below) | refuted — helper exits 0, `ping.exe` still alive before **and** after |
-| the way the application *spawns* the helper (`CREATE_NO_WINDOW`, inherited handles) | ran the helper **by hand from an ordinary shell**, against the pid of a shell belonging to the running application | refuted — exit 0, `ping.exe` still alive |
-
-**Where that leaves it.** The last row eliminates the raising process entirely: the same
-helper binary, run from an ordinary shell with no involvement from the application, kills
-`ping` on a pseudoconsole created by `cargo test` and does not on one created by the
-application. The variable is therefore neither the sequence, nor the thread, nor the
-process that raises, nor how it is launched — it is **the pseudoconsole the application
-created**, or something about the process that created it.
-
-That is a much smaller haystack than this section started with, and it is where the next
-session should begin. Candidates not yet tested, in the order they look worth trying:
-
-1. **The application's PTY is created under different process state.** A job object, a
-   different desktop/station, or an integrity level would all travel to the pseudoconsole's
-   conhost and to every process on it. `cargo test` has none of these; a Tauri app may.
-2. **`NativePtySpawner` has never been exercised with `powershell.exe`.** Every passing
-   adapter test uses `cmd.exe`; every passing PowerShell test uses `portable_pty` directly.
-   The intersection — this project's spawner, this project's shell — is untested, and it is
-   exactly what the application runs.
-3. **Session creation happens on a different thread than the tests use**, so the
-   pseudoconsole is owned by a thread that later behaves differently.
-
-The change is therefore **not shippable in this form**, and the fallback recorded in ADR 1 is
-taken: **a helper process attaches and raises, and the application never touches a console
-at all.** The trigger stated there — "if the guards prove insufficient" — has fired, in the
-strongest possible way: it is not that the guards are unsafe, it is that the raise does
-nothing from inside this process. What differs between the two rows above is the process,
-so the answer is to stop using that process.
-
-This also settles what the in-process form was always trading away. ADR 1 chose it to avoid
-a second binary and a spawn per keypress; the second binary turns out to cost nothing (the
-helper is a bin target in the same crate, so there is one crate, one build, one signature)
-and a spawn costs a few milliseconds against a keypress the user is waiting on anyway.
-Against that, the in-process form mutates console attachment and handler registration in a
-long-lived windowed process — which is exactly the state that broke it. The helper has no
-such state to break: it is born, attaches to one console, raises, and exits.
+Deleted with this decision: the attach/raise sequence, the `steward-interrupt` helper binary and
+its bundling task, the `shell_pid` the adapter carried to find a console, and the whole spike
+file that measured the abandoned mechanism.
 
 **Why not the alternatives:**
 
-| Option                                                     | Rejected because                                                                                                                                              |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Keep writing `0x03` and find the missing conversion        | Four candidates for that conversion are refuted by measurement (Context) and a fifth by inspection. Continuing down that path is the sunk-cost option.         |
-| `taskkill /T /F` or the crate wrappers around it           | Terminates rather than interrupts. The command gets no chance to clean up, and the spec asks for an interrupt the running program may handle.                  |
-| A job object holding the session, terminated on interrupt  | Same defect, plus it would take the shell down with the command — the session must survive.                                                                   |
-| A helper executable that attaches and raises the event     | Genuinely safer — the console state never touches the application — but it adds a second binary to a signed, packaged product and a process spawn per keypress. Held as the recorded fallback (Risks), not the first move. |
-| Adopt a crate that already does this                       | Searched: there is no maintained crate exposing "raise a control event on another process's console". `ctrlc` *receives* signals; `windows`/`windows-sys` expose the calls but decide nothing. What is left is a decision, not an implementation, so there is nothing to adopt beyond the binding. |
+| Option | Rejected because |
+| -------- | ------------------ |
+| Keep the helper process and raise the event | It does not work either, for the same reason — the attribute suppresses the event no matter who raises it. It also costs a second binary in a signed product and a spawn per keypress. |
+| Fix the launcher instead of the application | Would work for `npm run tauri dev` and nothing else. Any parent may set the flag, including ones we do not control, and a packaged application has no say in how it is started. The correction belongs where the pseudoconsole is created. |
+| Patch `portable-pty` to make the call itself | Correct upstream, and worth proposing there, but it would fork a dependency to move one line that is ours to make either way — the attribute belongs to *this* process, not to the crate's. |
+| `taskkill /T /F` or the crate wrappers around it | Terminates rather than interrupts. The command gets no chance to clean up, and the spec asks for an interrupt the running program may handle. |
+| A job object holding the session, terminated on interrupt | Same objection, plus it would take the shell down with the command — the session must survive. |
 
-### D3 — The delivery form follows the presented program, observed by the emulator
+### D3 — Superseded: the surface reports nothing with the interrupt
 
-**Why this decision exists at all.** It is the difference between a fix and a regression. The
-platform reference is blunt about the consequence of getting it wrong: "all console processes
-have a default handler function that calls `ExitProcess`", so a program that installs no
-handler is *terminated* by the event. Raising it unconditionally would work for `ping` and
-break the editors and REPLs that read the chord themselves.
+**Status: withdrawn 2026-08-10, by D2.** This decision had the surface report whether a
+full-screen program is presenting (`term.buffer.active.type === "alternate"`), and the core
+choose byte-vs-event from it. It existed only because the Windows adapter had to make that
+choice itself.
 
-**The first answer was measured and it does not work.** Task 2.4, 2026-08-10: with a program
-holding the keyboard raw on the session's pseudoconsole (`[Console]::TreatControlCAsInput`
-followed by `ReadKey` — .NET's name for exactly this flag), `ENABLE_PROCESSED_INPUT` read from
-`CONIN$` by an attached observer **stays set**. Observed across ten seconds: `[0x01f7,
-0x01e7]`. Not a startup race — the program announced itself 50 ms in — and not a stale handle,
-because the probe *does* see the child's other changes (`ENABLE_MOUSE_INPUT` toggles between
-those two readings). That specific bit does not travel through ConPTY to another attached
-process, so the console cannot be asked.
+It no longer does. `conhost` makes exactly this distinction, in exactly the place Unix's line
+discipline makes it: with processed input on, the byte becomes a control event for everything on
+the console; once a program has taken raw control, the same byte is delivered to it as input.
+Both platforms therefore decide correctly without being told, and an observation that decides
+nothing is a field the next reader has to explain away.
 
-**Decision:** ask the emulator instead. The surface reports whether a full-screen program is
-presenting — xterm.js already tracks the alternate screen buffer, which is what `vim`, `less`
-and every full-screen program switch to — and sends that observation with the interrupt
-request. The core decides from it: alternate buffer means the program owns the keyboard, so
-the chord is written as a byte; the normal buffer means the event is raised. Unix is unchanged
-(D4): the line discipline already makes this distinction itself, so the observation is
-Windows-only in effect even though the operation carries it on both.
+Removed with it: the `Presenting` vocabulary from the core, the `full_screen` argument from
+`terminal_interrupt` and its wire, the `bool → Presenting` translation in `terminal_ipc`, and
+the surface's read of the alternate-buffer flag.
 
-**Why the emulator and not the adapter.** The same signal is visible in the output stream as
-`ESC[?1049h`, and the adapter could watch for it. That would keep the decision entirely inside
-the session — but it would re-derive state that xterm.js already maintains correctly, putting
-a second, weaker terminal emulator in the byte path. `terminal-surface` ADR 2 adopted xterm.js
-precisely so this project would not write one; parsing the alternate-buffer switch in the
-adapter is writing one, a byte at a time.
-
-**The core still decides.** The surface contributes an observation it alone can make, not a
-choice: it says *what is presenting*, never *how to deliver*. A surface that reported wrongly
-could cause a byte where an event belonged, or the reverse — but it can escalate nothing,
-because a webview that can request an interrupt can already write arbitrary bytes to the
-session. This is the same shape as the size the surface reports: a fact from where the
-presenting happens, acted on by the core.
-
-**What this does not cover.** A program that takes raw control *without* the alternate buffer
-— a REPL binding the chord itself — receives the event rather than the byte. That is both what
-those programs want (Python raises `KeyboardInterrupt`, Node prompts) and what a real Windows
-terminal does for a program that leaves processed input on, so the residual gap is narrower
-than the mechanism it replaces would have been if it had worked.
+**What the withdrawn reasoning still establishes.** The console genuinely cannot be asked:
+measured on 2026-08-10, `ENABLE_PROCESSED_INPUT` read from `CONIN$` by an attached observer
+**stays set** while a program holds the keyboard raw (`[0x01f7, 0x01e7]` across ten seconds; not
+a startup race, and not a stale handle, since the probe does see the child's other mode
+changes). So *if* the adapter ever had to make this decision again, it could not do so by
+probing the console — it would have to be told. It does not have to, which is why it isn't.
 
 ### D4 — Unix: write the interrupt character and let the line discipline decide
 
 **Decision:** on Unix, `interrupt()` writes the interrupt character to the PTY master and does
 nothing else. No `killpg`, no signal plumbing, no foreground-process-group lookup.
 
-**Why.** The terminal line discipline already does exactly what D2 and D3 do by hand: in
-canonical mode it converts the character to `SIGINT` for the foreground process group, and a
-program that has set raw mode receives the byte. Reimplementing that with `tcgetpgrp` +
-`killpg` would replace a correct kernel behaviour with a racy user-space copy of it. The
-platform split is therefore small and asymmetric on purpose, and the asymmetry is the point:
-Unix needs nothing because it already works, and D4c is a Windows defect.
+**Why.** The terminal line discipline already makes the whole decision: in canonical mode it
+converts the character to `SIGINT` for the foreground process group, and a program that has set
+raw mode receives the byte. Reimplementing that with `tcgetpgrp` + `killpg` would replace a
+correct kernel behaviour with a racy user-space copy of it.
+
+**And this is now the whole design, both platforms.** With D2 corrected, `conhost` plays the
+line discipline's part on Windows and the two arms collapsed into one implementation. There is
+no platform split left in `interrupt()` — only the one-time correction D2 describes, which runs
+in the spawner rather than here.
 
 `terminal-surface` task 7.4 left Unix unverified for want of a host. That is unchanged and
 carried; it is not made worse by writing one byte.
 
 ### D5 — Platform binding: adopt `windows-sys` **[/ai:decide → ADR 2]**
 
-**Decision:** adopt `windows-sys`, target-gated to Windows, for `FreeConsole`,
-`AttachConsole`, `SetConsoleCtrlHandler`, `GenerateConsoleCtrlEvent`, `GetConsoleMode` and
-`CreateFileW`. Recommendation: **Adopt**.
+**Decision:** adopt `windows-sys`, target-gated to Windows. With D2 corrected the surviving
+call list is `SetConsoleCtrlHandler` alone; the decision stands unchanged, because a
+hand-declared signature is undefined behaviour whether there is one of them or six. The
+original list also held `FreeConsole`, `AttachConsole`, `GenerateConsoleCtrlEvent`,
+`GetConsoleMode` and `CreateFileW`. Recommendation: **Adopt**.
 
 It is already in the dependency tree (0.61.2, via Tauri), it is the Microsoft-published
 binding generated from the platform metadata, and it costs no new third-party surface — the
 dependency is a `[target.'cfg(windows)'.dependencies]` entry naming features that are already
-compiled. Hand-declaring `extern "system"` signatures for six functions is the alternative,
-and it is the kind of hand-rolled boundary this project's canon exists to prevent: a wrong
-signature is undefined behaviour, not a compile error.
+compiled. Hand-declaring the `extern "system"` signature is the alternative, and it is the kind
+of hand-rolled boundary this project's canon exists to prevent: a wrong signature is undefined
+behaviour, not a compile error.
 
 `windows` (0.61.3, the higher-level crate, also already in the tree) is rejected for this: the
-calls here are six raw functions in a hot, `unsafe` sequence, and the wrapper's types would
-add ceremony without removing a single `unsafe`.
+call is a raw function inside an `unsafe` block, and the wrapper's types would add ceremony
+without removing the `unsafe`.
 
 ### D6 — The surface routes the chord to the command, exactly once
 
 **Decision:** `terminal.js` recognises the interrupt chord in the handler it already has
 (`attachCustomKeyEventHandler`), suppresses xterm's own emission of the byte for that
-keypress, and invokes `terminal_interrupt` for the session instead — passing with it whether
-a full-screen program is presenting, read from `term.buffer.active.type` (D3). Everything else
-about input routing is untouched.
+keypress, and invokes `terminal_interrupt` for the session instead. Nothing is passed with it
+(D3 withdrawn). Everything else about input routing is untouched.
 
-**Why not send both.** Sending the byte *and* interrupting means the shell may see the chord
-twice — once as a cancelled prompt line and once as a stopped command — and on the raw-mode
-path (D3) the program would receive the byte twice. Exactly once is what the spec now says,
-and it is what a real terminal does.
+**Why not send both.** The command writes the same byte xterm would have emitted, so sending
+both means the session receives the chord twice — a cancelled prompt line *and* a stopped
+command, or two bytes to a program in raw mode. Exactly once is what the spec says, and what a
+real terminal does.
 
 **Why this is not interception.** The existing requirement forbids the surface consuming a key
 *to bind it to its own action*. Here the chord still goes to the session, by a call that names
-the session; what the session then does with it is D3's decision. The surface reports what it
-is presenting and nothing more — it gained an observation, not a behaviour.
+the session instead of by an anonymous write; what the session then does with it is the
+platform's. The surface gained an address for the chord, not a behaviour.
 
 **Failure is visible, not silent.** A refused interrupt leaves the session exactly as it was
 and is reported the way a refused write already is, rather than the surface pretending to have
@@ -336,48 +273,38 @@ here; `specs/` and `openspec/config.yaml` stay abstract. Every candidate below w
 against its registry and repository on that date rather than recalled, and the platform
 behaviour was read from Microsoft's own reference rather than remembered.
 
-### Decision: Raising an operating-system control event — Build, in a helper process
+### Decision: Delivering the interrupt — Adopt the platform mechanism
 
-- **Status**: approved (superseded the in-process form on 2026-08-10, by measurement — see D2a)
-- **Superseded**: the first approved form ran the sequence inside the application process,
-  with the helper recorded as a fallback "if the guards below prove insufficient". The
-  trigger fired for a reason stronger than the guards: raised from the application, the
-  event is delivered to no process at all, while the identical sequence against the identical
-  shell works from a test process. The tier and the reasoning below are unchanged — it is
-  still **Build**, because there is still nothing to adopt — only *where the code runs* moved.
-- **Why the helper wins now**: the failure is a property of the long-lived windowed process,
-  so the fix is to not use it. A helper is born with no console, attaches to exactly one,
-  raises, and exits; there is no console state to restore, no handler registration to
-  outlive the call, and no way for a mistake to take the application down with it. The costs
-  ADR 1 originally weighed against it have shrunk on contact: the helper is a bin target in
-  the same crate, so it is one build and one signature, and a spawn is a few milliseconds
-  against a keypress.
-- **Why**: **Build**, and this is the rare case where the hierarchy runs out before Adopt.
-  Nothing on crates.io exposes "raise a control event on another process's console": `ctrlc`
-  (the obvious search hit) *receives* Ctrl+C, it does not send it; `signal-child` is Unix-only
-  by its own documentation. What remains is not an implementation to adopt but a decision to
-  make, and the decision is a documented seven-call sequence — attach to the session's
-  pseudoconsole, raise the event, detach, restore — that is small enough to hold in one
-  function and dangerous enough to want in exactly one place.
-- **Considered**: a **helper executable** that attaches and raises in its own process
-  (genuinely safer — the process-global console state never touches the application — but it
-  adds a second binary to a signed, packaged product and a process spawn per keypress; kept as
-  the recorded fallback if the guards below prove insufficient, see Risks); adopting a console
-  wrapper crate — `winconsole` 0.11.1 (last release 2020-01-25) and `win32console` 0.1.5 (last
-  release 2021-11-13), both **hard reject on abandoned maintenance**, and neither aimed at
-  cross-process control events in the first place; continuing to hunt the missing byte→event
-  conversion (**refuted** four times by measurement in `terminal-surface` D4c and once here by
-  inspection — the sunk-cost option).
-- **Risk accepted**: the sequence mutates process-global state — console attachment and the
-  Ctrl+C ignore attribute — in a windowed process. Microsoft's reference confirms both halves
-  of the guard: `SetConsoleCtrlHandler`'s ignore attribute means "the handler functions for
-  that process are not called", which is what stops the application killing itself, and that
-  the attribute is *inheritable*, which is why session creation must be mutually exclusive
-  with it. Every risk is enumerated below with its mitigation and, where the mitigation is not
-  provable from the documentation, a measurement task.
-- **Isolation**: `src/adapters/pty.rs` behind the core's existing `Pty` port, as one method.
-  No Windows type reaches `core::terminal`, and Unix implements the same method with one write
-  (design D4).
+- **Status**: approved (2026-08-10). **Supersedes two earlier approved forms**, both of which
+  raised the control event ourselves: first inside the application process, then — when that was
+  measured to deliver to nobody — from a helper process, which was built, shipped as a bin
+  target, and measured to fail the same way.
+- **Why the reversal**: both earlier forms were answers to "no byte written to a ConPTY ever
+  becomes a control event", and that premise is false. It was true *of this process*, for a
+  reason that had nothing to do with terminals: an inherited `CREATE_NEW_PROCESS_GROUP`
+  attribute suppressed control events for everything on the pseudoconsole, the helper's raise
+  included. See D2 for the cause and the five measurements.
+- **Why**: **Adopt**, and the hierarchy no longer runs out before it. The platform already
+  delivers interrupts on a pseudoconsole, and every mature terminal on Windows relies on that
+  and nothing else — VS Code and anything else on Microsoft's `node-pty`, which makes the one
+  corrective call this decision reduces to. What we build is a single line, in the spawner,
+  clearing an attribute that belongs to this process.
+- **Considered**: **Build — a helper executable that attaches and raises** (previously approved;
+  **refuted by measurement**, and it also cost a second binary in a signed product and a spawn
+  per keypress); **Build — the in-process attach/raise sequence** (previously approved; refuted
+  the same way, and it mutated console attachment in a long-lived windowed process); **Fork
+  `portable-pty`** to make the call upstream (right in principle, worth proposing there, but the
+  attribute is this process's to clear, not the crate's); adopting a console wrapper crate —
+  `winconsole` 0.11.1 (2020-01-25) and `win32console` 0.1.5 (2021-11-13), both **hard reject on
+  abandoned maintenance** and neither aimed at this.
+- **Risk accepted**: the correction is process-global — it clears this application's own ignore
+  attribute — so a Ctrl+C pressed in the terminal that launched a development build would reach
+  the application. Guarded by registering a handler routine first; routines are not inherited by
+  children, so sessions keep the terminating default. Nothing else about the process's console
+  state is touched: there is no attach, no detach, and nothing to restore.
+- **Isolation**: `adapters/console_ctrl.rs`, one function, called by `adapters/pty.rs` before
+  the first spawn. No Windows type reaches `core::terminal`, and `Pty::interrupt` is now one
+  implementation for both platforms (design D4).
 
 ### Decision: Windows platform binding — Adopt `windows-sys`
 
@@ -395,97 +322,101 @@ behaviour was read from Microsoft's own reference rather than remembered.
 - **Isolation**: a `[target.'cfg(windows)'.dependencies]` entry, used only inside
   `adapters/pty.rs`'s Windows arm.
 
-### Decision: Scoping the interrupt — Build, console attachment with process group `0`
+### Decision: Scoping the interrupt — Adopt the pseudoconsole's own scope
 
-- **Status**: approved
-- **Why**: **Build**, and the platform leaves only one correct shape. Microsoft's reference for
-  `GenerateConsoleCtrlEvent` is explicit that `CTRL_C_EVENT` "cannot be limited to a specific
-  process group. If *dwProcessGroupId* is nonzero, this function will succeed, but the CTRL+C
-  signal will not be received" — so `0` is not a shortcut, it is the only value that works.
-  With `0`, "the signal is generated in all processes that share the console of the calling
-  process", and since we have just attached to the session's own pseudoconsole, that set is
-  exactly the session's shell and its descendants. The scope is established by *which console
-  we join*, not by an identifier we pass, which is what makes it impossible for the interrupt
-  to reach a process outside the session.
+- **Status**: approved (2026-08-10, restated after D2). The scope is now established by the
+  session's pseudoconsole itself: the byte goes to that pseudoconsole and nowhere else, and
+  `conhost` raises the resulting event for the processes on it — the session's shell and its
+  descendants. There is no process-group identifier to pass and no console to join, so the
+  interrupt is structurally incapable of reaching a process outside the session.
+- **Superseded**: the earlier form attached to the shell's console and called
+  `GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0)`, relying on `0` meaning "every process sharing
+  this console". That reasoning was sound and is still what `conhost` does internally — the
+  platform reference is explicit that `CTRL_C_EVENT` "cannot be limited to a specific process
+  group", so `0` was the only workable value — but we no longer make the call ourselves.
 - **Considered**: `CREATE_NEW_PROCESS_GROUP` on the shell plus a targeted `CTRL_BREAK_EVENT`
-  (scopable, but it is Ctrl+Break rather than Ctrl+C — different semantics for the running
-  program — and the same flag *disables* Ctrl+C for the process it is applied to, which is
-  self-defeating for a change whose entire purpose is Ctrl+C); a job object holding the
-  session, or a walk of the process tree by parent identifier, terminated on interrupt (both
-  **kill rather than interrupt**: the command gets no chance to clean up and the session would
-  not survive, so both fail the spec outright).
-- **Risk accepted**: the set is "everything sharing that console", which is the correct set but
-  not an enumerated one — we cannot name in advance which processes will receive it. That is
-  the same guarantee a real terminal gives, and the same one Windows Terminal relies on.
-- **Isolation**: same as ADR 1 — the console is joined and left inside one function, and
-  nothing outside `adapters/pty.rs` knows a console was involved.
+  (scopable, but Ctrl+Break is different semantics for the running program — and the flag is
+  now known to be **the cause of this entire defect**, so applying it deliberately would
+  reintroduce it); a job object holding the session, or a walk of the process tree, terminated
+  on interrupt (both **kill rather than interrupt**: the command gets no chance to clean up and
+  the session would not survive).
+- **Risk accepted**: the set is "everything on that pseudoconsole", which is the correct set but
+  not an enumerated one. That is the same guarantee every real terminal gives.
+- **Isolation**: none needed — the scope is a property of writing to the session's own PTY,
+  which `adapters/pty.rs` already does for every other byte.
 
 ## Risks / Trade-offs
 
-**[The application terminates itself along with the command]** → **Measured, three times, and
-now closed.** This was the real risk, not a theoretical one: every early form of the sequence
-died on its first raise. The guard that holds is a handler routine registered *after* the
-attach and left in place until our own delivery has been observed — see "What the spike
-changed" under D2 for the three shapes that fail and why. Confirmed by 100 consecutive raises
-with the process surviving. The residual risk is a raise whose event is never delivered, which
-would hold the console lock for the bounded wait (500 ms) and then continue; a keypress that
-occasionally costs half a second is a far better failure than a process that exits.
+**[The application terminates itself along with the command]** → **Closed, and now nearly free.**
+This was the dominant risk while the application raised the event: every early form of that
+sequence died on its first raise, and the guard that eventually held was intricate. With D2
+corrected there is no raise, so there is no event to survive. What remains is that clearing the
+ignore attribute re-arms the default handler for this process — mitigated by registering a
+handler routine immediately before clearing, in the same function, with no window between them.
 
-**[The ignore-flag leaks into a shell spawned during the window]** → **Dissolved by the same
-correction.** The hazard belonged to `SetConsoleCtrlHandler(NULL, TRUE)`, whose ignore
-attribute is inheritable — a shell spawned during that window would have been born unable to
-be interrupted. Handler *routines* are not inherited, so with the corrected sequence there is
-nothing to leak. Serialising interrupts against session creation is no longer required for
-correctness; the console lock is still needed, but only because console attachment is
-per-process.
+**[The ignore attribute leaks into a shell started later]** → **Inverted, and this is the whole
+fix.** The attribute is inherited, which is exactly why the application had to clear its own:
+sessions were being born unable to be interrupted. The guard is a handler *routine*, which is
+not inherited, so clearing the attribute is safe for this process and correct for its children.
 
-**[A development run loses its console]** → `FreeConsole()` detaches a process that *was*
-launched from a terminal, after which `println!` writes into nothing. This is invisible in the
-packaged application (windowed, no console) and very visible under `cargo run` and `cargo
-test` — which is where the behaviour is developed. Mitigated by step 7's restore, and by a
-test that asserts output still reaches stdout after an interrupt.
+**[A Ctrl+C in the launching terminal now reaches the application]** → **New, accepted, small.**
+A development build started from a terminal previously ignored Ctrl+C because it had inherited
+the attribute; it no longer does. The handler routine registered alongside returns `TRUE` for
+`CTRL_C_EVENT`, so the application still declines it — but close, log-off and shutdown are
+deliberately left to fall through, or the application would refuse to exit when the system
+tells it to.
 
-**[Two interrupts at once, or an interrupt racing a session's exit]** → Console attachment is
-per-process, not per-session, so two sessions interrupting concurrently would fight over one
-global. Serialised by the same lock as above. A shell that exits between the lock and the
-attach fails at step 3 and is reported, which is the correct answer for a session that no
-longer exists.
+**[A development run loses its console]** → **Gone.** `FreeConsole` is no longer called, so
+there is no detach to survive and nothing to restore. This was a real cost of the abandoned
+mechanism, and the test that guarded it went with it.
+
+**[Two interrupts at once, or an interrupt racing a session's exit]** → **Gone.** Interrupting
+is now a write to one session's PTY, so there is no process-global console state to serialise
+and no lock. An interrupt to a session that has ended is refused by the registry with a reason,
+like every other operation on it.
 
 **[The chord overtakes input still in flight]** → `terminal_interrupt` and `terminal_write` are
-separate commands, so an interrupt could in principle be processed before a keystroke sent
-just before it. Accepted: both serialise on the same registry mutex, and the window is a
-keystroke apart. It is not worth a sequencing protocol.
+separate commands, so an interrupt could in principle be processed before a keystroke sent just
+before it. Accepted: both serialise on the same registry mutex, and the window is a keystroke
+apart. It is not worth a sequencing protocol.
 
-**[The console-mode probe reads the wrong thing]** → **Occurred.** The probe does not
-distinguish a raw-mode program from a shell at a prompt through ConPTY; see the note on D3.
-The pre-registered fallback — "raise the event unconditionally and the raw-mode scenario
-becomes a known gap rather than a silent regression" — is one of the options on the table, but
-it is a spec-visible regression rather than a free choice, so it is being decided rather than
-defaulted into.
+**[The console-mode probe reads the wrong thing]** → **Occurred, and no longer matters.**
+`ENABLE_PROCESSED_INPUT` does not distinguish a raw-mode program from a shell at a prompt
+through ConPTY. That measurement forced D3, and D3 is now withdrawn: nothing in this design
+asks the console that question, because nothing in it chooses the delivery form.
 
-**[The whole hypothesis is wrong]** → **Closed: it is right.** `ping -n 25` stops and the shell
-answers in 52.7 ms where all five refuted candidates left it running the full ~21 s. Measured
-before any port, command, or surface change was written, which is what kept the three
-corrections above cheap.
+**[A future launcher, or a packaged host, sets the flag some other way]** → Accepted and
+contained. The correction runs before every session regardless of who started the application
+and regardless of whether the attribute was set at all — clearing an attribute that is already
+clear is a no-op. What it cannot cover is a *different* mechanism suppressing control events;
+that would be a new defect, and the measurement that would catch it is the one in D2's last two
+rows, taken in the running application rather than under `cargo test`.
 
 ## Migration Plan
 
-1. **Spike first, in a test, against a real shell.** No production code changes until the
-   sequence is measured to work. This is what keeps a refuted hypothesis cheap.
-2. Port, registry, adapter, command, capability grant — in that order, so nothing is reachable
-   before it is permissioned.
-3. Surface change, pack rebuild, and a signed release. Until that release, an installed
-   application still has the old surface: the backend gains the ability to interrupt before
-   anything asks it to, which is the safe ordering.
-4. Update `terminal-surface`'s D4c to point at this change's outcome, and close its task 7.3
-   (Rule 8: the record of an open defect that is no longer open is a defect in the docs).
+1. ~~Spike first, in a test, against a real shell.~~ Done, twice — and the second spike is the
+   one that mattered. **Keep the discipline and add to it: measure in the running application,
+   not only under `cargo test`.** Every automated test passed while the application was broken,
+   for two sessions, because the launcher is the variable and no test can vary it.
+2. Port, registry, adapter, command, capability grant — done, and since simplified: the
+   `Presenting` argument is gone from all of them (D3 withdrawn).
+3. Surface change, pack rebuild, and a signed release. The pack payload and manifest are
+   rebuilt; the release is still outstanding, and until it lands an installed application runs
+   the old surface — which sends `full_screen` to a command that no longer takes it. **Tauri
+   ignores unknown arguments, so the old surface keeps working against the new backend**, but
+   the two should not be left apart longer than necessary.
+4. Update `terminal-surface`'s D4c to point at this change's outcome, and close its task 7.3.
 
 ## Open Questions
 
-- ~~Does `ENABLE_PROCESSED_INPUT` on a ConPTY pseudoconsole track the running program's setting
-  the way it does on a real console?~~ **Answered 2026-08-10: no.** It stays set while a program
-  holds the keyboard raw. D3 is reopened; see the note there. **This is the one thing blocking
-  the rest of the change.**
+- ~~Does `ENABLE_PROCESSED_INPUT` on a ConPTY pseudoconsole track the running program's
+  setting?~~ **Answered 2026-08-10: no.** Moot — D3 is withdrawn and nothing probes it.
+- ~~Why does a control event raised at the session's console reach no process?~~ **Answered
+  2026-08-10: an inherited `CREATE_NEW_PROCESS_GROUP` ignore attribute** (D2). The same cause
+  explains why the byte never worked either.
+- Should `portable-pty` make the corrective call itself, as `node-pty` does? Worth proposing
+  upstream. Not a blocker — the attribute belongs to this process, so clearing it here is
+  correct whether or not the crate ever does.
 - Should a second, forceful escalation exist for a command that ignores the interrupt? Out of
   scope by the proposal, but the shape of `interrupt()` should not make it awkward to add.
 - Unix remains unverified for want of a host — the same gap `terminal-surface` task 7.4 carries.
