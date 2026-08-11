@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use steward_ide_lib::adapters::pty::NativePtySpawner;
 use steward_ide_lib::core::terminal::{
-    ExitCause, Pty, PtySpawner, SessionError, Size, SpawnRequest,
+    ExitCause, Presenting, Pty, PtySpawner, SessionError, Size, SpawnRequest,
 };
 
 /// Generous: a first shell start on a cold Windows box is not fast, and a flaky timeout
@@ -88,6 +88,15 @@ impl Session {
             .write(bytes)
     }
 
+    fn interrupt(&self, presenting: Presenting) -> Result<(), SessionError> {
+        self.pty
+            .lock()
+            .expect("poisoned")
+            .as_mut()
+            .expect("session is live")
+            .interrupt(presenting)
+    }
+
     fn resize(&self, size: Size) -> Result<(), SessionError> {
         self.pty
             .lock()
@@ -138,6 +147,53 @@ impl Session {
             last = seen;
         }
         panic!("the shell never settled; got:\n{}", self.text());
+    }
+
+    /// How long until `needle` appears, or `None` if it never does.
+    fn wait_for(&self, needle: &str, within: Duration) -> Option<Duration> {
+        let started = std::time::Instant::now();
+        while started.elapsed() < within {
+            if self.text().contains(needle) {
+                return Some(started.elapsed());
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        None
+    }
+
+    /// Start something that runs for ~21 seconds, and confirm it is actually running
+    /// before anything is measured against it.
+    ///
+    /// Liveness is watched as output growth rather than matched as a phrase: `ping`'s
+    /// wording is localised, and a check that only holds on English Windows would be
+    /// measuring the wrong thing.
+    fn start_a_long_command(&self, command: &[u8]) {
+        self.wait_until_quiet();
+        let before = self.raw().len();
+        self.write(command).unwrap();
+        self.write(b"\r\n").unwrap();
+        std::thread::sleep(Duration::from_secs(3));
+        assert!(
+            self.raw().len() > before,
+            "the long command must be running before the interrupt is measured; got:\n{}",
+            self.text()
+        );
+    }
+
+    /// Ask the shell to echo a marker, and time how long it takes to answer.
+    ///
+    /// The marker is written so that the *typed* line differs from the *printed* one —
+    /// `^_` under `cmd`, `''` under `sh`. Without that the marker would appear as soon as
+    /// the terminal echoed the keystrokes, and the test would pass whether or not the
+    /// shell ever regained control.
+    fn time_until_the_shell_answers(&self, within: Duration) -> Option<Duration> {
+        let command: &[u8] = if cfg!(windows) {
+            b"echo STEWARD_INTERRUPT^_OK\r\n"
+        } else {
+            b"echo STEWARD_INTERRUPT''_OK\r\n"
+        };
+        self.write(command).unwrap();
+        self.wait_for("STEWARD_INTERRUPT_OK", within)
     }
 
     /// Run a command, let its output land, then let the shell exit on its own.
@@ -237,6 +293,121 @@ fn output_arrives_byte_transparently_including_control_sequences() {
     assert!(
         raw.contains(&0x1b),
         "escape bytes reached the sink unmodified rather than being stripped"
+    );
+}
+
+/// Something that keeps running long enough that "it stopped" and "it finished" can never
+/// be confused: ~21 seconds against a two-second budget.
+fn a_long_command() -> &'static [u8] {
+    if cfg!(windows) {
+        b"ping -n 25 127.0.0.1"
+    } else {
+        b"ping -c 25 127.0.0.1"
+    }
+}
+
+/// The budget separating a working interrupt from a command that ran to completion. Every
+/// candidate refuted in `terminal-surface` design D4c landed at ~21s.
+const INTERRUPT_BUDGET: Duration = Duration::from_secs(2);
+
+#[test]
+fn scenario_a_running_command_is_interrupted() {
+    // The defect this change exists to fix, through the real adapter rather than the spike:
+    // the command stops, the session does not, and it executes input afterwards.
+    let session = Session::start(Size::new(80, 24).unwrap());
+    session.start_a_long_command(a_long_command());
+
+    session.interrupt(Presenting::Normally).unwrap();
+
+    let answered = session
+        .time_until_the_shell_answers(LIMIT)
+        .unwrap_or_else(|| panic!("the shell never came back; got:\n{}", session.text()));
+    assert!(
+        answered < INTERRUPT_BUDGET,
+        "the running command must stop rather than run to completion — the shell took \
+         {answered:?}, and ~21s is the signature of the command finishing on its own"
+    );
+}
+
+#[test]
+fn scenario_the_interrupt_reaches_what_the_command_started() {
+    // One level deeper: the shell runs a child which runs the long command. If only the
+    // immediate child were signalled, the shell would still be waiting on the grandchild
+    // and could not answer inside the budget.
+    let session = Session::start(Size::new(80, 24).unwrap());
+    let nested: &[u8] = if cfg!(windows) {
+        b"cmd /c ping -n 25 127.0.0.1"
+    } else {
+        b"sh -c 'ping -c 25 127.0.0.1'"
+    };
+    session.start_a_long_command(nested);
+
+    session.interrupt(Presenting::Normally).unwrap();
+
+    let answered = session
+        .time_until_the_shell_answers(LIMIT)
+        .unwrap_or_else(|| panic!("the shell never came back; got:\n{}", session.text()));
+    assert!(
+        answered < INTERRUPT_BUDGET,
+        "nothing from the interrupted command may be left running — the shell took {answered:?}"
+    );
+}
+
+#[test]
+fn a_session_started_after_an_interrupt_is_still_interruptible() {
+    // The inheritance hazard, measured. `SetConsoleCtrlHandler(NULL, TRUE)` — the form of
+    // the guard this change started with — is inherited by child processes, so a shell
+    // spawned once an interrupt had happened would have been born unable to be interrupted.
+    // A handler routine is not inherited (design D2), and this is what says so.
+    let first = Session::start(Size::new(80, 24).unwrap());
+    first.start_a_long_command(a_long_command());
+    first.interrupt(Presenting::Normally).unwrap();
+
+    let second = Session::start(Size::new(80, 24).unwrap());
+    second.start_a_long_command(a_long_command());
+    second.interrupt(Presenting::Normally).unwrap();
+
+    let answered = second
+        .time_until_the_shell_answers(LIMIT)
+        .unwrap_or_else(|| panic!("the second shell never came back; got:\n{}", second.text()));
+    assert!(
+        answered < INTERRUPT_BUDGET,
+        "a session started after an interrupt must still be interruptible; took {answered:?}"
+    );
+}
+
+#[test]
+fn scenario_an_idle_session_is_interrupted() {
+    // Harmless, and the session goes on accepting input.
+    let session = Session::start(Size::new(80, 24).unwrap());
+    session.wait_until_quiet();
+
+    session.interrupt(Presenting::Normally).unwrap();
+
+    assert!(
+        session
+            .time_until_the_shell_answers(LIMIT)
+            .is_some_and(|t| t < INTERRUPT_BUDGET),
+        "an interrupt at a prompt changes nothing; got:\n{}",
+        session.text()
+    );
+}
+
+#[test]
+fn a_full_screen_program_receives_the_chord_as_input() {
+    // What the surface reports decides delivery (design D3). With a full-screen program
+    // presenting, the chord must arrive as a byte — no control event — so the shell's own
+    // line editor cancels the line and echoes it, exactly as typing it would.
+    let session = Session::start(Size::new(80, 24).unwrap());
+    session.wait_until_quiet();
+    session.write(b"partial-line-never-run").unwrap();
+
+    session.interrupt(Presenting::FullScreen).unwrap();
+
+    assert!(
+        session.wait_for("partial-line-never-run", LIMIT).is_some(),
+        "the chord reached the shell as input rather than as a signal; got:\n{}",
+        session.text()
     );
 }
 
