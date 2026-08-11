@@ -164,19 +164,43 @@
 
 ## 6. Cut the first release
 
-- [ ] 6.1 Confirm the tree carries production trust settings — by running the gate, not by
-      inspection.
-- [ ] 6.2 Tag and push `v0.1.0`. This is the first exercise of the entire path.
+- [x] 6.1 Confirm the tree carries production trust settings — by running the gate, not by
+      inspection. `check-release --version v0.1.0` on `main`, exit 0.
+- [x] 6.2 Tag and push `v0.1.0`. This is the first exercise of the entire path.
+      Run `31540815949`, **all five jobs green**, `draft=false`, four assets:
+      `steward-ide_0.1.0_{amd64.deb, amd64.AppImage, x64-setup.exe, x64_en-US.msi}`. The first
+      release this project has ever published.
 - [ ] 6.3 Install the Windows artifact on a machine that did not build it and confirm it
       launches, reaches the content endpoint, and serves the terminal pack. Note the
       unsigned-publisher warning as it actually appears.
-- [ ] 6.4 Install the Linux artifact in a container and confirm the same.
-- [ ] 6.5 Record what the first release proved and what stayed unverified (Rule 6). Expect at
-      minimum: macOS, and signing.
+      **UNVERIFIED — no second Windows machine exists.** Installing on the machine that built
+      it would not answer the question this task asks, so it was not done and counted. The
+      Linux equivalent (6.4) *was* run on a machine that did not build it and passed, which
+      makes this a gap in platform coverage of the evidence rather than an untested product
+      path. Carry it forward.
+- [x] 6.4 Install the Linux artifact in a container and confirm the same.
+      Clean `ubuntu:22.04`, the `.deb` fetched by plain `curl` from the public URL — nothing
+      from this working tree. Installs as version `0.1.0`.
+
+      **What the shipped artifact actually carries** (the gate's whole purpose, checked in the
+      installed tree rather than trusted): endpoints
+      `https://dufeutech.github.io/steward-packs/tuf/{metadata,targets}/` and root role key
+      `1ece4e45…b22f69` — the production values. And version `0.1.0` reached the package from
+      the crate alone, so D2 is proven inside a published installer, not just a local build.
+
+      **It works end-to-end.** First boot: `no version available; serving bootstrap`, then
+      `updater: xkin@0.1.0 activated (pending boot)` and `updater: terminal@0.1.0 activated
+      (pending boot)` — it reached the live endpoint and verified content through TUF. Second
+      boot serves the real thing: `PACK 200 /packs/terminal/0.1.0/terminal.js`,
+      `/packs/xkin/0.1.0/dist/xkin.editor.min.js`, and the Monaco workers. Two boots are
+      required because activation is *pending boot* by design; one launch would have looked
+      like a failure.
+- [x] 6.5 Record what the first release proved and what stayed unverified (Rule 6). Expect at
+      minimum: macOS, and signing. See **What the first release proved** below.
 
 ## 7. Validation
 
-- [~] 7.1 Run everything in `.canon/checks.md`, including the new rows and the Unix container
+- [x] 7.1 Run everything in `.canon/checks.md`, including the new rows and the Unix container
       row. Report anything that could not be run as unverified rather than omitting it.
 
       **Ran clean (2026-08-11):** `cargo fmt --check`, `cargo clippy -D warnings`, Go
@@ -184,17 +208,54 @@
       (`no broken links`), `check-anchor`, the new `check-release` row both directions, and
       the Unix container — **112 passed / 0 failed** on Linux.
 
-      **One pre-existing failure, not caused by this change.** Windows
+      **One Windows failure surfaced here, diagnosed and fixed — it was never a regression.**
       `terminal_interrupt_windows::the_byte_interrupts_a_running_command_in_an_ordinary_process`
-      fails deterministically: writing `0x03` no longer stops `ping -n 25` under `cmd.exe`
-      (replies 3 → 6, `stopped=false`), 3 runs out of 3, identical numbers. Established as
-      pre-existing by stashing every change in this branch and re-running at `36ef429` — same
-      failure — and this change touches **zero** `.rs` files. Its sibling test, the one that
-      proves the process-group attribute is the mechanism, still passes.
+      failed deterministically (`0x03` did not stop `ping -n 25` under `cmd.exe`, replies
+      3 → 6, three runs of three). The first conclusion — "pre-existing, not ours" — was
+      correct but incomplete, and stopping there was the mistake: *not caused by this change*
+      is not a diagnosis.
 
-      This matters beyond the checklist: it is the behaviour `terminal-interrupt-signal` was
-      archived for, the last handoff recorded Windows as 114/0/1, and CI cannot see it because
-      the runner is Linux. It belongs to the terminal capability, not to the release pipeline,
-      so it is **reported here and left unfixed** rather than repaired inside an unrelated
-      change (Rule 7). It does not block a release: the release gate, the bundling and the
-      workflow are independent of it.
+      The cause is the **launcher**, not the product. The test asserts an *ordinary* process
+      can interrupt, but never established that its own process was ordinary — it inherited
+      that from whatever spawned `cargo`. A runner using `CREATE_NEW_PROCESS_GROUP` passes the
+      ignore-Ctrl+C attribute down, and Git Bash does where PowerShell does not. One commit,
+      one machine: PowerShell passed, Git Bash failed. The application has always cleared that
+      attribute before spawning — that is what `adapters::console_ctrl` is for — and the test
+      bypassed the production spawner by calling `openpty` directly.
+
+      Fixed in `220255e` by having the control call the application's own
+      `enable_interrupts_for_sessions()`: it is what production does, and it guards the process
+      first, since clearing the attribute alone re-arms the default handler and a Ctrl+C in the
+      terminal running the tests would kill the run. Now **114 passed / 0 failed / 1 ignored**
+      from Git Bash, unchanged from PowerShell, and the sibling experiment's inner measurements
+      still read 3 → 6 broken and 3 → 3 restored.
+
+      Same defect class as last session's two Unix fixes: a test measuring its environment
+      rather than the product. It has now bitten on both platforms, which makes it a pattern
+      worth naming rather than three coincidences.
+
+## What the first release proved (task 6.5)
+
+**Proved, by measurement rather than by design review:**
+
+- The whole path works unattended: tag → gate → draft → two-platform matrix → attest →
+  publish. `v0.1.0`, run `31540815949`, five jobs green.
+- **All-or-nothing is real**, in the shape that matters: a draft holding a complete
+  four-asset set still did not publish when one platform failed.
+- The **gate does its job end-to-end** — the installed artifact carries the production root
+  key and production endpoints, checked in the installed tree.
+- **A recipient can verify origin** with only the file and public information, and a tampered
+  copy fails.
+- The published Linux artifact **acquires and serves real content** from the live endpoint on
+  a machine that never built it.
+- One version declaration reaches every artifact, including a published `.deb`.
+
+**Unverified, and carried forward:**
+
+- **Windows install on a second machine** (6.3) — none exists. The artifact builds, publishes
+  and attests; nothing has launched it except the machine that built it.
+- **macOS** — never built, never run, deliberately not shipped. Unchanged.
+- **Signing** — artifacts are unsigned; the OS warning is documented, not yet observed on a
+  clean machine. Smart App Control may block rather than warn.
+- **The unsigned-publisher warning as it actually appears** — a consequence of 6.3, not a
+  separate gap.
