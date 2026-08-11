@@ -14,6 +14,5 @@ pub mod session;
 pub use config::{resolve_shell, NoShell, ShellConfig, SurfaceConfig, TerminalConfig};
 pub use registry::Registry;
 pub use session::{
-    ExitCause, Presenting, Pty, PtySpawner, SessionError, SessionId, Size, SizeRejected,
-    SpawnRequest,
+    ExitCause, Pty, PtySpawner, SessionError, SessionId, Size, SizeRejected, SpawnRequest,
 };

@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use steward_ide_lib::adapters::pty::NativePtySpawner;
 use steward_ide_lib::core::terminal::{
-    ExitCause, Presenting, Pty, PtySpawner, SessionError, Size, SpawnRequest,
+    ExitCause, Pty, PtySpawner, SessionError, Size, SpawnRequest,
 };
 
 /// Generous: a first shell start on a cold Windows box is not fast, and a flaky timeout
@@ -29,11 +29,6 @@ const LIMIT: Duration = Duration::from_secs(30);
 
 const CURSOR_QUERY: &[u8] = b"\x1b[6n";
 const CURSOR_ANSWER: &[u8] = b"\x1b[1;1R";
-
-/// The interrupt helper cargo built alongside this test (design D2a).
-fn interrupt_helper() -> std::path::PathBuf {
-    env!("CARGO_BIN_EXE_steward-interrupt").into()
-}
 
 fn a_shell() -> String {
     if cfg!(windows) {
@@ -58,9 +53,7 @@ impl Session {
 
         let collected = Arc::clone(&output);
         let answering = Arc::clone(&pty);
-        // Cargo builds the helper for this test run and hands us its path, so these tests
-        // exercise the binary that ships rather than a copy of what it does.
-        let started = NativePtySpawner::new(std::env::temp_dir(), interrupt_helper())
+        let started = NativePtySpawner::new(std::env::temp_dir())
             .spawn(SpawnRequest {
                 program: a_shell(),
                 size,
@@ -95,13 +88,13 @@ impl Session {
             .write(bytes)
     }
 
-    fn interrupt(&self, presenting: Presenting) -> Result<(), SessionError> {
+    fn interrupt(&self) -> Result<(), SessionError> {
         self.pty
             .lock()
             .expect("poisoned")
             .as_mut()
             .expect("session is live")
-            .interrupt(presenting)
+            .interrupt()
     }
 
     fn resize(&self, size: Size) -> Result<(), SessionError> {
@@ -324,7 +317,7 @@ fn scenario_a_running_command_is_interrupted() {
     let session = Session::start(Size::new(80, 24).unwrap());
     session.start_a_long_command(a_long_command());
 
-    session.interrupt(Presenting::Normally).unwrap();
+    session.interrupt().unwrap();
 
     let answered = session
         .time_until_the_shell_answers(LIMIT)
@@ -349,7 +342,7 @@ fn scenario_the_interrupt_reaches_what_the_command_started() {
     };
     session.start_a_long_command(nested);
 
-    session.interrupt(Presenting::Normally).unwrap();
+    session.interrupt().unwrap();
 
     let answered = session
         .time_until_the_shell_answers(LIMIT)
@@ -368,11 +361,11 @@ fn a_session_started_after_an_interrupt_is_still_interruptible() {
     // A handler routine is not inherited (design D2), and this is what says so.
     let first = Session::start(Size::new(80, 24).unwrap());
     first.start_a_long_command(a_long_command());
-    first.interrupt(Presenting::Normally).unwrap();
+    first.interrupt().unwrap();
 
     let second = Session::start(Size::new(80, 24).unwrap());
     second.start_a_long_command(a_long_command());
-    second.interrupt(Presenting::Normally).unwrap();
+    second.interrupt().unwrap();
 
     let answered = second
         .time_until_the_shell_answers(LIMIT)
@@ -389,31 +382,13 @@ fn scenario_an_idle_session_is_interrupted() {
     let session = Session::start(Size::new(80, 24).unwrap());
     session.wait_until_quiet();
 
-    session.interrupt(Presenting::Normally).unwrap();
+    session.interrupt().unwrap();
 
     assert!(
         session
             .time_until_the_shell_answers(LIMIT)
             .is_some_and(|t| t < INTERRUPT_BUDGET),
         "an interrupt at a prompt changes nothing; got:\n{}",
-        session.text()
-    );
-}
-
-#[test]
-fn a_full_screen_program_receives_the_chord_as_input() {
-    // What the surface reports decides delivery (design D3). With a full-screen program
-    // presenting, the chord must arrive as a byte — no control event — so the shell's own
-    // line editor cancels the line and echoes it, exactly as typing it would.
-    let session = Session::start(Size::new(80, 24).unwrap());
-    session.wait_until_quiet();
-    session.write(b"partial-line-never-run").unwrap();
-
-    session.interrupt(Presenting::FullScreen).unwrap();
-
-    assert!(
-        session.wait_for("partial-line-never-run", LIMIT).is_some(),
-        "the chord reached the shell as input rather than as a signal; got:\n{}",
         session.text()
     );
 }

@@ -12,9 +12,7 @@ use std::sync::Arc;
 
 use portable_pty::{native_pty_system, Child, ChildKiller, CommandBuilder, MasterPty, PtySize};
 
-use crate::core::terminal::{
-    ExitCause, Presenting, Pty, PtySpawner, SessionError, Size, SpawnRequest,
-};
+use crate::core::terminal::{ExitCause, Pty, PtySpawner, SessionError, Size, SpawnRequest};
 
 /// Bytes handed to the output sink per read. A PTY read returns whatever is available, so
 /// this is a ceiling rather than a quantum — it only bounds how much sits in one buffer.
@@ -41,24 +39,22 @@ pub struct NativePtySpawner {
     /// Where sessions start. A defined working directory is part of the session contract
     /// (spec `terminal-session`), so it is injected rather than inherited by accident.
     cwd: PathBuf,
-    /// The binary that raises a console control event on Windows (design D2a). Injected
-    /// for the same reason as `cwd`: the adapter is handed a decided value rather than
-    /// discovering one, which is also what lets a test point at its own build of it.
-    #[cfg_attr(unix, allow(dead_code))]
-    interrupt_helper: PathBuf,
 }
 
 impl NativePtySpawner {
-    pub fn new(cwd: PathBuf, interrupt_helper: PathBuf) -> Self {
-        Self {
-            cwd,
-            interrupt_helper,
-        }
+    pub fn new(cwd: PathBuf) -> Self {
+        Self { cwd }
     }
 }
 
 impl PtySpawner for NativePtySpawner {
     fn spawn(&self, request: SpawnRequest) -> Result<Box<dyn Pty>, SessionError> {
+        // Before the pseudoconsole exists, not after: what this clears is inherited at
+        // child-creation time, so a session started first is born uninterruptible for its
+        // whole life (design D2b).
+        #[cfg(windows)]
+        crate::adapters::console_ctrl::enable_interrupts_for_sessions();
+
         let pair = native_pty_system()
             .openpty(pty_size(request.size))
             .map_err(|e| SessionError::Spawn(format!("could not allocate a terminal: {e}")))?;
@@ -91,11 +87,6 @@ impl PtySpawner for NativePtySpawner {
         // below would have to hold a lock the killer also needs, and closing a busy
         // session would deadlock against reaping it.
         let killer = child.clone_killer();
-
-        // Taken here because the child is moved into the waiter thread below and never
-        // comes back. Windows needs it to find the console to raise an interrupt on; on
-        // Unix nothing reads it, since the line discipline needs no process identifier.
-        let shell_pid = child.process_id();
 
         let SpawnRequest {
             on_output, on_exit, ..
@@ -149,8 +140,6 @@ impl PtySpawner for NativePtySpawner {
             master: Some(pair.master),
             writer: Some(Box::new(writer)),
             killer,
-            shell_pid,
-            interrupt_helper: self.interrupt_helper.clone(),
             reader_thread: Some(reader_thread),
         }))
     }
@@ -184,11 +173,6 @@ struct NativePty {
     master: Option<Box<dyn MasterPty + Send>>,
     writer: Option<Box<dyn Write + Send>>,
     killer: Box<dyn ChildKiller + Send + Sync>,
-    /// The shell's process identifier, where the platform has one. Windows raises the
-    /// interrupt on the console this process owns; Unix never reads it.
-    shell_pid: Option<u32>,
-    #[cfg_attr(unix, allow(dead_code))]
-    interrupt_helper: PathBuf,
     /// Taken on close so the thread is joined exactly once (spec: nothing outlives its
     /// session).
     reader_thread: Option<std::thread::JoinHandle<()>>,
@@ -214,13 +198,26 @@ impl Pty for NativePty {
             .map_err(|e| SessionError::Io(e.to_string()))
     }
 
-    fn interrupt(&mut self, presenting: Presenting) -> Result<(), SessionError> {
-        // A closed session has no writer and no console; say so once, here, rather than
-        // twice in the platform arms below.
+    /// Hand the interrupt character to the terminal and let the platform decide what it
+    /// means (design D2b, D4).
+    ///
+    /// One implementation on both platforms, because both make the same distinction in the
+    /// same place. Unix's line discipline raises `SIGINT` for the foreground process group
+    /// in canonical mode and delivers the byte to a program that asked for raw input;
+    /// Windows' `conhost` raises the control event while processed input is on and delivers
+    /// the byte once a program has taken raw control. Re-deriving that decision here — with
+    /// `tcgetpgrp` and `killpg`, or by attaching to the shell's console — would replace a
+    /// correct kernel behaviour with a racy copy of it.
+    ///
+    /// Nothing is passed in alongside the session for the same reason: the surface has
+    /// nothing to observe on the platform's behalf. That observation existed only for a
+    /// mechanism that had to choose the delivery form itself (design D3), and that
+    /// mechanism is gone.
+    fn interrupt(&mut self) -> Result<(), SessionError> {
         if self.writer.is_none() {
             return Err(SessionError::Io("the session is closed".into()));
         }
-        self.deliver_interrupt(presenting)
+        self.write(&[INTERRUPT])
     }
 
     fn close(&mut self) -> Result<(), SessionError> {
@@ -235,41 +232,6 @@ impl Pty for NativePty {
             let _ = thread.join();
         }
         Ok(())
-    }
-}
-
-impl NativePty {
-    /// Unix: hand the character to the terminal and let the line discipline decide
-    /// (design D4).
-    ///
-    /// It already makes the distinction D3 has to construct on Windows: in canonical mode
-    /// it raises `SIGINT` for the foreground process group, and a program that set raw mode
-    /// receives the byte. What the surface reports is therefore not needed here — and
-    /// re-deriving the decision with `tcgetpgrp` and `killpg` would replace a correct
-    /// kernel behaviour with a racy copy of it.
-    #[cfg(unix)]
-    fn deliver_interrupt(&mut self, _presenting: Presenting) -> Result<(), SessionError> {
-        self.write(&[INTERRUPT])
-    }
-
-    /// Windows: raise a control event, unless a full-screen program owns the keyboard
-    /// (design D2, D3).
-    ///
-    /// Nothing written to the input stream becomes a control event here — that is the
-    /// defect this whole change exists to fix, refuted five ways in `terminal-surface`
-    /// design D4c. So the byte is right only when the chord belongs to the program as
-    /// input, and the event is right otherwise.
-    #[cfg(windows)]
-    fn deliver_interrupt(&mut self, presenting: Presenting) -> Result<(), SessionError> {
-        match presenting {
-            Presenting::FullScreen => self.write(&[INTERRUPT]),
-            Presenting::Normally => {
-                let pid = self.shell_pid.ok_or_else(|| {
-                    SessionError::Io("the shell has no process identifier to interrupt".into())
-                })?;
-                crate::adapters::console_ctrl::interrupt(pid, &self.interrupt_helper)
-            }
-        }
     }
 }
 
@@ -292,7 +254,7 @@ mod tests {
     fn a_missing_program_is_reported_not_panicked() {
         // Spec scenario "The shell cannot be started": a reason the surface can show,
         // with the application still usable.
-        let spawner = NativePtySpawner::new(std::env::temp_dir(), "unused-here".into());
+        let spawner = NativePtySpawner::new(std::env::temp_dir());
         let outcome = spawner.spawn(SpawnRequest {
             program: "steward-no-such-shell-exists".into(),
             size: Size::new(80, 24).unwrap(),

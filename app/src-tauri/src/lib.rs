@@ -22,13 +22,6 @@ const EVENT_SESSION_EXITED: &str = "event:terminal.session_exited";
 /// The surface that may start a session (design D6, layer 3).
 const APPLICATION_COMPOSITION: &str = "application";
 
-/// The binary that raises a console control event, shipped beside this one (design D2a).
-/// Named once here because the bundle configuration has to agree with it.
-#[cfg(windows)]
-const INTERRUPT_HELPER: &str = "steward-interrupt.exe";
-#[cfg(not(windows))]
-const INTERRUPT_HELPER: &str = "steward-interrupt";
-
 fn emit_pack_event(app: &AppHandle, event: &str, pack: &str, id: &str, version: &str) {
     let _ = app.emit(
         event,
@@ -281,24 +274,13 @@ fn terminal_resize(
 }
 
 /// Interrupt what a session is running, leaving the session alive (spec `terminal-session`).
-///
-/// `full_screen` is what the surface can see and the backend cannot: whether a program has
-/// taken the alternate screen buffer, and with it the keyboard. It decides delivery, not the
-/// surface (design D3).
 #[tauri::command]
-fn terminal_interrupt(
-    sessions: State<Sessions>,
-    session: u64,
-    full_screen: bool,
-) -> Result<(), String> {
+fn terminal_interrupt(sessions: State<Sessions>, session: u64) -> Result<(), String> {
     sessions
         .0
         .lock()
         .expect("poisoned")
-        .interrupt(
-            core::terminal::SessionId::new(session),
-            adapters::terminal_ipc::presenting(full_screen),
-        )
+        .interrupt(core::terminal::SessionId::new(session))
         // An interrupt that does not land is invisible from the surface — the command simply
         // keeps running — so say so where a developer will see it.
         .inspect_err(|e| eprintln!("terminal: session {session} not interrupted: {e}"))
@@ -362,16 +344,8 @@ pub fn run() {
             app.manage(Sessions(std::sync::Mutex::new(
                 core::terminal::Registry::new(),
             )));
-            // The interrupt helper ships beside the application binary (design D2a). Resolved
-            // here for the same reason as the working directory: the adapter is handed a
-            // decided value rather than discovering one.
-            let interrupt_helper = std::env::current_exe()
-                .ok()
-                .and_then(|exe| exe.parent().map(|dir| dir.join(INTERRUPT_HELPER)))
-                .unwrap_or_else(|| INTERRUPT_HELPER.into());
             app.manage(Spawner(Box::new(adapters::pty::NativePtySpawner::new(
                 session_cwd,
-                interrupt_helper,
             ))));
 
             app.manage(state);

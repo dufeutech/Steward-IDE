@@ -4,10 +4,6 @@ version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
-# The crate ships a second binary — `steward-interrupt`, which raises a console control
-# event on behalf of the application (change `terminal-interrupt-signal`, design D2a).
-# Without this, `cargo run` and `tauri dev` cannot tell which one they mean.
-default-run = "steward-ide"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

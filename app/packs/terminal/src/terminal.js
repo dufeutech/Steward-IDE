@@ -256,15 +256,15 @@ class TerminalSurface {
 
   /// Ask the session to interrupt what it is running.
   ///
-  /// The one thing reported with it is whether a full-screen program holds the alternate
-  /// screen buffer — something only this side can see, and which the backend cannot get
-  /// from the console (measured: the flag that would say so does not survive ConPTY). The
-  /// backend decides what to do about it; this reports, it does not choose.
+  /// Nothing is reported with it. The chord is an operation on the session, and what it
+  /// means for the program currently running is the platform's decision, made where the
+  /// program's input actually arrives — the line discipline on Unix, `conhost` on Windows.
+  /// A full-screen program that has taken raw control receives the chord as input from
+  /// both, so this side has nothing to observe on its behalf (design D2b).
   interrupt() {
     if (this.sessionId === null || !this.term) return;
-    const fullScreen = this.term.buffer.active.type === "alternate";
     tauri()
-      .invoke("terminal_interrupt", { session: this.sessionId, fullScreen })
+      .invoke("terminal_interrupt", { session: this.sessionId })
       .catch((err) => console.warn("terminal: interrupt refused:", err));
   }
 
