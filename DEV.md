@@ -3,6 +3,15 @@
 How to get a window on screen and iterate. Validation commands are **not** here — they live
 in [`.canon/checks.md`](.canon/checks.md), which is their one home.
 
+**A development build is not a release build.** `npm run tauri build` produces installers on
+your machine, from your working tree, including any uncommitted edits to the trust anchor and
+the content endpoints that the [local-endpoint section](#running-against-a-local-endpoint-offline--no-published-release)
+below tells you to make. Those two values compile into the binary and cannot be corrected in
+an installed copy. A local build is for looking at; a **release** is cut by pushing a tag and
+is gated against exactly that mistake — see
+[`docs/runbooks/releasing.md`](docs/runbooks/releasing.md). Never hand someone an installer
+built here.
+
 ## Prerequisites
 
 | Need               | Check                 | Notes                                                                     |
@@ -91,6 +100,10 @@ full recipe in
 Both files you edit for that (`config/app.config.json` and `tuf/root.json`) are **tracked**.
 Revert them before committing — a dev anchor on `main` ships a binary that trusts throwaway
 keys and rejects real releases.
+
+Remembering is no longer the only safeguard: `packpub check-release` refuses a release whose
+tree still carries either edit, and it runs before anything is compiled. Check your own tree
+any time with the release-gate row in [`.canon/checks.md`](.canon/checks.md).
 
 ## Checking by hand, repeatably
 
@@ -203,6 +216,10 @@ re-run the embedded-size check from [`.canon/checks.md`](.canon/checks.md).
 
 ## Related
 
+- [`docs/runbooks/releasing.md`](docs/runbooks/releasing.md) — cutting a real release, and
+  what the gate refuses.
+- [`docs/installing.md`](docs/installing.md) — installing a published build instead of
+  running from source.
 - [`docs/architecture/asset-pack-system.md`](docs/architecture/asset-pack-system.md) — how
   serving, acquisition and activation fit together.
 - [`scripts/README.md`](scripts/README.md) — the `packpub` / `mdlinks` / `ensure` tooling.
