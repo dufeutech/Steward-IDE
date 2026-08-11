@@ -116,6 +116,13 @@ space opens the system menu and the next letter picks **Close**.
 `close` is deliberately not a kill: the app's own shutdown is what terminates live terminal
 sessions, so killing it would skip the very thing worth checking.
 
+> **`cargo test` under an agent harness fails `terminal_interrupt_windows`, and it is right to.**
+> That suite's control case asserts what an _ordinary_ process sees, and a coding-agent tool
+> harness starts commands the way a development runner does — with `CREATE_NEW_PROCESS_GROUP`.
+> The runner therefore hands the inherited "ignore Ctrl+C" attribute to the test, which
+> measures `replies 3 → 6` and fails exactly as design D2 predicts. Run that suite from a
+> terminal you opened yourself; under an agent, use `--no-fail-fast` and read the other 112.
+>
 > **Never measure "did it stop?" with a command that stops on its own.** Each `appdrive`
 > invocation costs a few seconds to start, so a bounded command like `ping -n 25` can finish
 > before your chord lands — and a finished command with `^C` at the prompt is indistinguishable
