@@ -293,15 +293,25 @@ fn output_arrives_byte_transparently_including_control_sequences() {
     // not re-encoded (spec `terminal-session`: "Session input and output are
     // byte-transparent").
     let session = Session::start(Size::new(80, 24).unwrap());
-    session.run_then_exit(b"echo MARKER_ONE");
+    // The shell is asked to emit an escape sequence rather than left to volunteer one.
+    // Waiting on a decorated prompt is not a test of transparency: it holds on shells that
+    // colour their prompt and fails on ones that do not. `dash` — Debian's `/bin/sh`, and
+    // so what this suite starts on Linux — emits not one escape byte under a PTY, which is
+    // how this assertion came to fail there while passing on Windows for four months.
+    let emit_an_escape: &[u8] = if cfg!(windows) {
+        b"echo \"$([char]27)[31mMARKER_ONE$([char]27)[0m\""
+    } else {
+        b"printf '\\033[31mMARKER_ONE\\033[0m\\n'"
+    };
+    session.run_then_exit(emit_an_escape);
 
     let raw = session.raw();
     assert!(
         raw.windows(10).any(|w| w == b"MARKER_ONE"),
         "the marker survived the round trip"
     );
-    // Every shell under a PTY emits control sequences unprompted; if any layer were
-    // escaping or filtering them, none would be present as raw bytes.
+    // If any layer were escaping, filtering or re-encoding, the sequence the shell was
+    // just told to print would not be present as raw bytes.
     assert!(
         raw.contains(&0x1b),
         "escape bytes reached the sink unmodified rather than being stripped"
@@ -395,6 +405,13 @@ fn scenario_an_idle_session_is_interrupted() {
     session.wait_until_quiet();
 
     session.interrupt().unwrap();
+
+    // Let the prompt come back before typing at it. A Unix tty flushes its input queue as
+    // it raises SIGINT, so a line written in the same instant as the interrupt is
+    // discarded by the line discipline — correct terminal behaviour, and not something a
+    // person can hit, because a person types after seeing the prompt return. Measuring
+    // without this wait made the test assert that the interrupt is *not* delivered.
+    session.wait_until_quiet();
 
     assert!(
         session
