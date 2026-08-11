@@ -136,13 +136,25 @@ impl Session {
     /// transport bug. There is no readiness signal to wait on — a prompt is just bytes,
     /// and differs per shell — so quiescence is the available proxy.
     fn wait_until_quiet(&self) {
+        // Two consecutive unchanged samples, not one. A command that has been echoed but has
+        // not yet produced output looks identical to a settled shell, and one 250 ms sample
+        // is short enough to land in that gap — `mode con` under load did, about half the
+        // time, and the session was told to `exit` before its output arrived.
+        const UNCHANGED_SAMPLES_MEANING_SETTLED: u8 = 2;
+
         let deadline = std::time::Instant::now() + LIMIT;
         let mut last = usize::MAX;
+        let mut unchanged = 0;
         while std::time::Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(250));
             let seen = self.raw().len();
             if seen > 0 && seen == last {
-                return;
+                unchanged += 1;
+                if unchanged >= UNCHANGED_SAMPLES_MEANING_SETTLED {
+                    return;
+                }
+            } else {
+                unchanged = 0;
             }
             last = seen;
         }

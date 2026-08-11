@@ -122,14 +122,24 @@ impl Shell {
 
     /// Block until the shell stops producing output — the only available proxy for "ready",
     /// since a prompt is just bytes and differs per shell.
+    ///
+    /// Two consecutive unchanged samples, for the reason `terminal_pty.rs` records: a command
+    /// that has been echoed but has not yet produced output is indistinguishable from a
+    /// settled shell, and one 250 ms sample lands in that gap often enough to matter.
     fn wait_until_quiet(&self) {
         let deadline = Instant::now() + Duration::from_secs(30);
         let mut last = usize::MAX;
+        let mut unchanged = 0;
         while Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(250));
             let seen = self.len();
             if seen > 0 && seen == last {
-                return;
+                unchanged += 1;
+                if unchanged >= 2 {
+                    return;
+                }
+            } else {
+                unchanged = 0;
             }
             last = seen;
         }
