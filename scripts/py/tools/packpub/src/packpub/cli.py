@@ -24,6 +24,8 @@ app = cyclopts.App(
 
 KEY_ENV_DEFAULT = "PACKPUB_SIGNING_KEY"
 ANCHOR_RELPATH = Path("app/src-tauri/tuf/root.json")
+CONFIG_RELPATH = Path("app/src-tauri/config/app.config.json")
+CARGO_RELPATH = Path("app/src-tauri/Cargo.toml")
 DEFAULT_KEY_NAME = "packpub-signing-key.pem"
 DEFAULT_ROOT_KEY_NAME = "packpub-root-key.pem"
 
@@ -255,6 +257,39 @@ def check_anchor(
 
     for problem in report.problems:
         print(f"problem: {problem}", file=sys.stderr)
+    return 0 if report.ok else 1
+
+
+@app.command(name="check-release")
+def check_release(
+    version: Annotated[str | None, cyclopts.Parameter(
+        help="Version being released, with or without a leading 'v'; compared against the crate",
+    )] = None,
+) -> int:
+    """Refuse a release the committed tree must not produce (design D4).
+
+    Answers a different question from `check-anchor`: not whether the anchor is
+    well formed, but whether it is *ours*. The trust anchor and the content
+    endpoints are compiled into the binary and cannot be corrected in an
+    installed copy, so this runs before anything is built.
+    """
+    root = _repo_root()
+    report = pipeline.inspect_release_tree(
+        root / ANCHOR_RELPATH,
+        root / CONFIG_RELPATH,
+        root / CARGO_RELPATH,
+        version,
+    )
+
+    print(f"crate version  {report.crate_version}")
+    if report.requested_version:
+        print(f"releasing      {report.requested_version}")
+    print(f"root role keys {', '.join(report.root_key_ids) or 'none'}")
+    for key, value in report.endpoints:
+        print(f"  {key:<14} {value}")
+
+    for problem in report.problems:
+        print(f"refusing to release: {problem}", file=sys.stderr)
     return 0 if report.ok else 1
 
 

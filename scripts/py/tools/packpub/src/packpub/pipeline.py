@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+import tomllib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +17,7 @@ from packpub import PackError
 from packpub.adapters import filesystem, npm, schema, tufrepo
 from packpub.core import ceremony as ceremony_core
 from packpub.core import manifest as manifest_core
+from packpub.core import release as release_core
 from packpub.core import repo as repo_core
 from packpub.core.origin import parse_npm_purl
 
@@ -272,4 +274,34 @@ def inspect_anchor(anchor: Path,
         load_manifest(anchor),
         plan or ceremony_core.CeremonyPlan(),
         datetime.now(timezone.utc),
+    )
+
+
+def crate_version(cargo_toml: Path) -> str:
+    """The one declaration of the application's version (design D2).
+
+    `tauri.conf.json` and `app/package.json` deliberately declare none, so the
+    bundler falls back to this and there is nothing left to drift.
+    """
+    if not cargo_toml.is_file():
+        raise PackError(f"no crate manifest at {cargo_toml}")
+    try:
+        document = tomllib.loads(cargo_toml.read_text(encoding="utf-8"))
+    except tomllib.TOMLDecodeError as exc:
+        raise PackError(f"{cargo_toml} is not valid TOML: {exc}") from exc
+
+    version = (document.get("package") or {}).get("version")
+    if not isinstance(version, str) or not version:
+        raise PackError(f"{cargo_toml} declares no package version")
+    return version
+
+
+def inspect_release_tree(anchor: Path, config: Path, cargo_toml: Path,
+                         requested_version: str | None = None) -> release_core.ReleaseReport:
+    """Decide whether the committed tree may be published (design D4)."""
+    return release_core.inspect_release_tree(
+        load_manifest(anchor),
+        load_manifest(config),
+        crate_version(cargo_toml),
+        requested_version,
     )
