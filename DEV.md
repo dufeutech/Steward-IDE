@@ -136,6 +136,35 @@ sessions, so killing it would skip the very thing worth checking.
 > from an interrupt that did nothing. It cost one false negative already. Use an unbounded
 > command (`ping -t`) and read the count it stopped at.
 
+## Checking the Unix side from Windows
+
+`terminal_pty` is written for both platforms, but its Unix arms only run on a Unix host, and
+for most of this project's life there wasn't one. A container is that host:
+
+```bash
+docker build -f scripts/docker/unix-tests.Dockerfile -t steward-unix-tests:1 .
+MSYS_NO_PATHCONV=1 docker run --rm \
+  -v "$PWD:/src" -v steward-unix-target:/target \
+  steward-unix-tests:1 cargo test --locked --no-fail-fast
+```
+
+`MSYS_NO_PATHCONV=1` is needed from Git Bash, which otherwise rewrites `/src` into a Windows
+path and the container fails to start. Linux build artifacts go to a named volume rather than
+the checkout, because `target/` is full of Windows ones and the two toolchains would overwrite
+each other's fingerprints.
+
+> **`ping` is load-bearing, so check it still pings.** The interrupt scenarios tell "it
+> stopped" from "it finished" by a 2-second budget against a ~21-second command, and that
+> command is `ping -c 25 127.0.0.1`. Under some container runtimes `ping` exits immediately
+> with `socket: Operation not permitted` — which is still output, so the liveness guard is
+> satisfied and every interrupt test passes without measuring anything. Time it once
+> (`time ping -c 25 127.0.0.1`) before believing a green run on a new machine.
+
+Two Unix-only test defects were found the first time this ran, and both were assumptions a
+Windows shell happened to satisfy: that a shell decorates its prompt with escape sequences
+(`dash` emits none), and that a line typed in the same instant as an interrupt survives (a
+Unix tty flushes its input queue as it raises `SIGINT`). Neither was a defect in the product.
+
 ## Simulating a fresh install
 
 The content store and TUF metadata cache live outside the checkout, so `cargo clean` does not
