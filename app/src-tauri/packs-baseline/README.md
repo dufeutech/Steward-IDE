@@ -26,7 +26,7 @@ the user watches while that happens.
 
 ## Regenerating the bootstrap manifest
 
-The bootstrap surface is first-party: its source tree *is* its payload, with no build
+The bootstrap surface is first-party: its source tree _is_ its payload, with no build
 step, so regeneration is manifest generation over the committed files. No network, no
 external origin, nothing to fetch.
 

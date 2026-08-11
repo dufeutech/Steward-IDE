@@ -23,6 +23,12 @@ pub struct AppConfig {
     /// (spec pack-update: failure or absence of the endpoint never blocks use).
     #[serde(default)]
     pub update: Option<UpdateEndpoint>,
+    /// Absent = no session can be started. The terminal context reads its settings from
+    /// the same document as everything else (one config home), but a config that predates
+    /// the terminal must still boot — so this is optional rather than required, and
+    /// `terminal_open` refuses with a reason when it is missing.
+    #[serde(default)]
+    pub terminal: Option<crate::core::terminal::TerminalConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -314,6 +320,26 @@ impl ServeState {
     pub fn manifest_schema(&self) -> &serde_json::Value {
         &self.schema
     }
+
+    /// Terminal settings, if this build's config declares any (change `terminal-surface`).
+    /// The document has one home and one parse; this hands the terminal context its
+    /// section without a second reader of the same file.
+    pub fn terminal(&self) -> Option<&crate::core::terminal::TerminalConfig> {
+        self.config.terminal.as_ref()
+    }
+
+    /// Which surface is currently being served — `"application"`, `"bootstrap"`, or
+    /// `"none"`.
+    ///
+    /// The terminal commands gate on this (design D6, layer 3). Tauri capabilities are
+    /// scoped per window and this app renders the recovery surface and the application in
+    /// the same `main` window, so a capability grant alone cannot tell them apart.
+    pub fn composition_marker(&self) -> &'static str {
+        core::shell::compose(&self.config.packs, &|pack| {
+            self.resolve_pack(pack).is_some()
+        })
+        .marker()
+    }
 }
 
 #[cfg(test)]
@@ -518,6 +544,155 @@ mod tests {
         assert!(
             !html.contains("/packs/boot/"),
             "the bootstrap surface is not presented once a version is active: {html}"
+        );
+    }
+
+    /// A resource root with **two** application packs, only one of which has embedded
+    /// content. This is the shape the terminal pack introduces (change `terminal-surface`),
+    /// and it is the first time more than one application pack composes the page.
+    fn two_application_packs(second_resolves: bool) -> (tempfile::TempDir, ServeState) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let hash = |b: &[u8]| {
+            let mut h = Sha256::new();
+            h.update(b);
+            format!("{:x}", h.finalize())
+        };
+        for sub in ["config", "schemas", "shell"] {
+            std::fs::create_dir_all(root.join(sub)).unwrap();
+        }
+        std::fs::write(
+            root.join("config/app.config.json"),
+            serde_json::json!({
+                "csp": "default-src 'self'",
+                "packs": [
+                    {"pack": "editor", "id": "pack:assets.editor",
+                     "role": "application", "embedded_version": "0.1.0"},
+                    {"pack": "terminal", "id": "pack:assets.terminal",
+                     "role": "application", "embedded_version": "0.1.0"},
+                    {"pack": "boot", "id": "pack:assets.boot",
+                     "role": "bootstrap", "embedded_version": "0.0.1"}
+                ]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("config/media_types.json"),
+            r#"{"js": "text/javascript", "css": "text/css", "html": "text/html"}"#,
+        )
+        .unwrap();
+        std::fs::copy(
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/schemas/pack.manifest.schema.json"
+            ),
+            root.join("schemas/pack.manifest.schema.json"),
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("shell/index.html"),
+            r#"<head>%%STYLE_TAGS%%</head><body data-composition="%%COMPOSITION%%">%%SCRIPT_TAGS%%</body>"#,
+        )
+        .unwrap();
+
+        // The second pack is skipped entirely when it must not resolve — the shipped
+        // shape, where a pack with no local content simply contributes no candidate.
+        let packs: &[(&str, &str)] = if second_resolves {
+            &[
+                ("editor", "pack:assets.editor"),
+                ("terminal", "pack:assets.terminal"),
+            ]
+        } else {
+            &[("editor", "pack:assets.editor")]
+        };
+        for (pack, id) in packs {
+            let js = format!("console.log('{pack}');\n").into_bytes();
+            std::fs::create_dir_all(root.join(format!("packs-baseline/{pack}/dist"))).unwrap();
+            std::fs::write(
+                root.join(format!("packs-baseline/{pack}/dist/{pack}.js")),
+                &js,
+            )
+            .unwrap();
+            std::fs::write(
+                root.join(format!("packs-baseline/{pack}/manifest.json")),
+                serde_json::json!({
+                    "format_version": 1, "id": id, "version": "0.1.0",
+                    "files": [{"path": format!("dist/{pack}.js"),
+                               "size": js.len(), "sha256": hash(&js)}],
+                    "entry": {"scripts": [format!("dist/{pack}.js")], "styles": []}
+                })
+                .to_string(),
+            )
+            .unwrap();
+        }
+        let boot = b"console.log('bootstrap');\n".to_vec();
+        std::fs::create_dir_all(root.join("packs-baseline/boot/dist")).unwrap();
+        std::fs::write(root.join("packs-baseline/boot/dist/boot.js"), &boot).unwrap();
+        std::fs::write(
+            root.join("packs-baseline/boot/manifest.json"),
+            serde_json::json!({
+                "format_version": 1, "id": "pack:assets.boot", "version": "0.0.1",
+                "files": [{"path": "dist/boot.js", "size": boot.len(), "sha256": hash(&boot)}],
+                "entry": {"scripts": ["dist/boot.js"], "styles": []}
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let store = dir.path().join("store");
+        let state = ServeState::new(root.to_path_buf(), store).unwrap();
+        (dir, state)
+    }
+
+    #[test]
+    fn scenario_two_application_packs_compose_one_page() {
+        let (_d, s) = two_application_packs(true);
+        let (status, _, body) = s.serve("/");
+        assert_eq!(status, 200);
+        let html = String::from_utf8(body).unwrap();
+        assert!(html.contains(r#"data-composition="application""#));
+        // Both packs' entry points, in configuration order — the terminal surface only
+        // loads because the editor pack resolved too, and vice versa.
+        let editor = html
+            .find("/packs/editor/0.1.0/dist/editor.js")
+            .expect("editor");
+        let terminal = html
+            .find("/packs/terminal/0.1.0/dist/terminal.js")
+            .expect("terminal");
+        assert!(
+            editor < terminal,
+            "configuration order is preserved: {html}"
+        );
+        assert_eq!(
+            s.composition_marker(),
+            "application",
+            "terminal_open's gate agrees with what was served"
+        );
+    }
+
+    #[test]
+    fn scenario_one_of_two_application_packs_is_unresolvable() {
+        // The risk the terminal pack introduces: a page missing part of the application is
+        // not the application, so an unavailable terminal pack costs the user the editor
+        // too. Asserted rather than assumed, because it is a deliberate trade-off and a
+        // future change must not soften it by accident.
+        let (_d, s) = two_application_packs(false);
+        let (status, _, body) = s.serve("/");
+        assert_eq!(status, 200);
+        let html = String::from_utf8(body).unwrap();
+        assert!(
+            html.contains(r#"data-composition="bootstrap""#),
+            "the recovery surface is served, not a half-composed application: {html}"
+        );
+        assert!(
+            !html.contains("/packs/editor/"),
+            "the editor is NOT presented on its own: {html}"
+        );
+        assert_eq!(
+            s.composition_marker(),
+            "bootstrap",
+            "so terminal_open refuses to start a shell (design D6, layer 3)"
         );
     }
 

@@ -7,6 +7,9 @@ pub mod config;
 pub mod manifest;
 pub mod resolve;
 pub mod shell;
+/// The terminal context (change `terminal-surface`). A sibling bounded context, not part
+/// of the asset-pack system — it shares the composition root and nothing else.
+pub mod terminal;
 pub mod updater;
 pub mod verify;
 

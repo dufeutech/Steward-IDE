@@ -5,14 +5,19 @@ in [`.canon/checks.md`](.canon/checks.md), which is their one home.
 
 ## Prerequisites
 
-| Need               | Check                 | Notes                                                           |
-| ------------------ | --------------------- | --------------------------------------------------------------- |
-| Node               | `node -v`             | Only to run the Tauri CLI; there is no frontend build step.     |
-| Rust               | `cargo -V`            | The app _is_ the Rust crate under `app/src-tauri/`.             |
-| WebView2 (Windows) | ships with Windows 11 | Linux needs `webkit2gtk`; macOS needs Xcode command-line tools. |
+| Need               | Check                 | Notes                                                                     |
+| ------------------ | --------------------- | ------------------------------------------------------------------------- |
+| Node               | `node -v`             | Runs the Tauri CLI, and builds the terminal pack (`app/packs/terminal/`). |
+| Rust               | `cargo -V`            | The app _is_ the Rust crate under `app/src-tauri/`.                       |
+| WebView2 (Windows) | ships with Windows 11 | Linux needs `webkit2gtk`; macOS needs Xcode command-line tools.           |
 
-No bundler, no dev server, no TypeScript toolchain. `tauri.conf.json` points `frontendDist`
-at `app/src-tauri/shell/`, which is served as-is.
+No dev server and no TypeScript toolchain. `tauri.conf.json` points `frontendDist` at
+`app/src-tauri/shell/`, which is served as-is.
+
+There is exactly one frontend build, and it is scoped to `app/packs/terminal/` (change
+`terminal-surface`, design D7). `shell/` stays build-free and the Rust build does not depend
+on it, so a broken Node toolchain cannot stop the application from building — it can only
+stop you from producing a new terminal pack payload.
 
 ## Start it
 
@@ -38,6 +43,31 @@ The window opens at `pack://localhost` — a custom protocol served by the Rust 
 2. **Then the editor**, once the `xkin` pack has been fetched, verified and activated —
    acquisition runs in the background at startup and never blocks it. Subsequent runs skip
    straight here because the pack is already in the local store.
+3. **A "Terminal" button, bottom right**, once the `terminal` pack is also active. Click it
+   or press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>`</kbd> to open a shell. Hiding the panel
+   does not end the session.
+
+> **<kbd>Ctrl</kbd>+<kbd>C</kbd> is a command that sends a byte.** Every other keystroke reaches
+> the shell through `terminal_write`; the interrupt chord goes through `terminal_interrupt`,
+> because the specification names it as an operation with a refusal of its own — but what it
+> sends is the same `0x03` any terminal sends, and the platform decides what that means.
+>
+> **On Windows it only works because the application clears an attribute it inherited.**
+> `CREATE_NEW_PROCESS_GROUP` — which a launcher may set, and `npm run tauri dev` does — carries
+> an "ignore Ctrl+C" attribute down to every child, including the `conhost` behind the
+> pseudoconsole and everything the shell runs. If interrupts stop working, that is the first
+> thing to suspect, and the last two rows of the table in the change's design D2 are how to
+> tell: **measure in the running application, not under `cargo test`** — the launcher is the
+> variable and no test can vary it. See
+> [`adapters/console_ctrl.rs`](app/src-tauri/src/adapters/console_ctrl.rs) and
+> [`docs/architecture/terminal-sessions.md`](docs/architecture/terminal-sessions.md#interrupting-is-a-byte--and-what-had-to-be-fixed-for-that-to-be-true).
+
+> **Two application packs now compose the page**, and `compose()` presents the application
+> only when _every_ application pack resolves. If the `terminal` pack cannot be acquired you
+> get the bootstrap surface and **no editor** — not a working editor with the terminal
+> missing. That is deliberate (a page missing part of the application is not the
+> application), but it means a terminal-pack problem looks like a total content failure.
+> Check the console for `pack terminal: no version available; serving bootstrap`.
 
 Useful console lines (the terminal running `tauri dev`, not the webview):
 
@@ -61,6 +91,43 @@ full recipe in
 Both files you edit for that (`config/app.config.json` and `tuf/root.json`) are **tracked**.
 Revert them before committing — a dev anchor on `main` ships a binary that trusts throwaway
 keys and rejects real releases.
+
+## Checking by hand, repeatably
+
+Some properties only a running app can show — a full-screen program redrawing in place,
+double-width text staying aligned, dense output not stalling the window. Those are driven
+with [`appdrive`](scripts/README.md) rather than by hand-rolling window automation each
+time:
+
+```bash
+cd scripts/py
+uv run appdrive find                                  # window rect: the frame the rest use
+uv run appdrive keys '^+`' --shot /tmp/panel.png      # open the terminal, capture the result
+uv run appdrive click 762 606 --shot /tmp/after.png   # click in window coordinates
+uv run appdrive crop /tmp/after.png /tmp/zoom.png --y 520 --height 90 --scale 3
+uv run appdrive close                                 # close the way the X does, not a kill
+```
+
+Two things it does that a quick script will not: it captures the window's own surface, so a
+window behind another one still yields its real content instead of whatever is on top; and
+it raises the window without the ALT tap that leaves it in menu-bar state — where a typed
+space opens the system menu and the next letter picks **Close**.
+
+`close` is deliberately not a kill: the app's own shutdown is what terminates live terminal
+sessions, so killing it would skip the very thing worth checking.
+
+> **`cargo test` under an agent harness fails `terminal_interrupt_windows`, and it is right to.**
+> That suite's control case asserts what an _ordinary_ process sees, and a coding-agent tool
+> harness starts commands the way a development runner does — with `CREATE_NEW_PROCESS_GROUP`.
+> The runner therefore hands the inherited "ignore Ctrl+C" attribute to the test, which
+> measures `replies 3 → 6` and fails exactly as design D2 predicts. Run that suite from a
+> terminal you opened yourself; under an agent, use `--no-fail-fast` and read the other 112.
+>
+> **Never measure "did it stop?" with a command that stops on its own.** Each `appdrive`
+> invocation costs a few seconds to start, so a bounded command like `ping -n 25` can finish
+> before your chord lands — and a finished command with `^C` at the prompt is indistinguishable
+> from an interrupt that did nothing. It cost one false negative already. Use an unbounded
+> command (`ping -t`) and read the count it stopped at.
 
 ## Simulating a fresh install
 

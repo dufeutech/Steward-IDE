@@ -212,7 +212,9 @@ cython_debug/
 # ============================================
 # Go
 # ============================================
-bin/
+# Anchored: only the Go workspace's build output. An unanchored `bin/` matches at any
+# depth and would silently swallow a Rust crate's `src/bin/`, which is source.
+/scripts/go/bin/
 vendor/
 *.exe
 *.exe~

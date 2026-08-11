@@ -8,11 +8,11 @@ the one secret whose compromise cannot be repaired by any other control in the s
 
 ## What exists after this runbook
 
-| Artifact                     | Lives                          | Secret? |
-| ---------------------------- | ------------------------------ | ------- |
-| `app/src-tauri/tuf/root.json` | committed in this repository   | no — public metadata |
-| root private key             | operator's password manager    | **yes — offline only** |
-| online signing key           | GitHub Actions secret `PACKPUB_SIGNING_KEY` | **yes** |
+| Artifact                      | Lives                                       | Secret?                |
+| ----------------------------- | ------------------------------------------- | ---------------------- |
+| `app/src-tauri/tuf/root.json` | committed in this repository                | no — public metadata   |
+| root private key              | operator's password manager                 | **yes — offline only** |
+| online signing key            | GitHub Actions secret `PACKPUB_SIGNING_KEY` | **yes**                |
 
 The root key never touches CI. The online key never touches the repository. If both
 statements stop being true, the signing model is broken regardless of what the code does.
@@ -62,7 +62,7 @@ Then, in order — this part is deliberately manual, because custody cannot be a
 1. **Store the root key** in the operator's password manager, as a file attachment or
    full text, and verify you can read it back. This is the only copy. Losing it means
    every installed client must be reinstalled to accept a new anchor.
-2. **Add the CI secret** — the *online* key, never the root key:
+2. **Add the CI secret** — the _online_ key, never the root key:
    ```bash
    gh secret set PACKPUB_SIGNING_KEY < ~/packpub-signing-key.pem
    ```
@@ -135,12 +135,12 @@ before committing — it catches a rotation that collapsed the two keys back int
 
 ## Expiry maintenance
 
-| Role      | Lifetime  | Renewed by                                        |
-| --------- | --------- | ------------------------------------------------- |
-| timestamp | 14 days   | `refresh-tuf-timestamp` workflow, weekly          |
-| snapshot  | 6 months  | any publish; the refresh workflow when near expiry |
-| targets   | 6 months  | any publish                                        |
-| root      | 1 year    | **this runbook** — signature manual, reminder automatic |
+| Role      | Lifetime | Renewed by                                              |
+| --------- | -------- | ------------------------------------------------------- |
+| timestamp | 14 days  | `refresh-tuf-timestamp` workflow, weekly                |
+| snapshot  | 6 months | any publish; the refresh workflow when near expiry      |
+| targets   | 6 months | any publish                                             |
+| root      | 1 year   | **this runbook** — signature manual, reminder automatic |
 
 You do not need to remember this date. The `refresh-tuf-timestamp` workflow runs
 `packpub check-anchor` on its weekly schedule, and once expiry is inside the 90-day

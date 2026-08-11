@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "terminal",
+  "description": "Starting and driving terminal sessions (change terminal-surface). Held apart from `default` on purpose: this is the one grant in the app that amounts to running arbitrary commands as the user, and it should be visible as its own decision rather than buried in the default set. It is depth behind the trust anchor, not a substitute for it — the primary control is that only TUF-verified content is ever served. It also cannot tell the recovery surface from the application, because capabilities are scoped per window and both render in `main`; `terminal_open` makes that distinction itself.",
+  "windows": ["main"],
+  "permissions": [
+    "allow-terminal-open",
+    "allow-terminal-write",
+    "allow-terminal-resize",
+    "allow-terminal-interrupt",
+    "allow-terminal-close",
+    "allow-terminal-config"
+  ]
+}

@@ -1,0 +1,109 @@
+# AsyncAPI description of the terminal context's domain events (Rule 9/10/11; change
+# `terminal-surface`, design D3/D8). Emitted on the app's in-process event bus; names are
+# Rule 11 registry identifiers.
+#
+# A separate document from `events.asyncapi.yaml` on purpose: that one describes the
+# assets context, and Rule 10 keeps a context's contracts its own. One bus, two contracts.
+asyncapi: 3.0.0
+info:
+  title: Steward IDE — terminal context events
+  version: 0.1.0
+  description: >
+    Immutable facts about terminal session lifecycle. A surface learns that a session
+    started or stopped, and why, without coupling to the session registry's internals.
+
+    Session **output is deliberately absent from this document**. Bytes are not a domain
+    fact: they are a high-rate, point-to-point stream belonging to exactly one surface, and
+    they travel over a per-session `tauri::ipc::Channel` as raw bytes instead. Routing them
+    here would force JSON encoding of arbitrary binary, inflate the densest traffic in the
+    application by a third, and make every listener parse a stream that concerns one
+    surface. See ADR "Byte transport across the application boundary".
+
+channels:
+  session_started:
+    address: "event:terminal.session_started"
+    messages:
+      sessionStarted:
+        $ref: "#/components/messages/sessionStarted"
+  session_exited:
+    address: "event:terminal.session_exited"
+    messages:
+      sessionExited:
+        $ref: "#/components/messages/sessionExited"
+
+operations:
+  onSessionStarted:
+    action: receive
+    channel:
+      $ref: "#/channels/session_started"
+  onSessionExited:
+    action: receive
+    channel:
+      $ref: "#/channels/session_exited"
+
+components:
+  messages:
+    sessionStarted:
+      name: sessionStarted
+      title: An interactive shell session began
+      summary: >
+        A shell is running and the session will accept input. Carries the size it was
+        opened with, so a listener can tell whether the surface got the geometry it asked
+        for without querying anything.
+      payload:
+        type: object
+        required: [session_id, columns, rows]
+        additionalProperties: false
+        properties:
+          session_id:
+            type: integer
+            minimum: 1
+            description: >
+              Opaque handle, unique for the application's lifetime and never reused. Issued
+              by the session registry; the webview holds this and nothing else.
+          columns:
+            type: integer
+            minimum: 1
+            maximum: 65535
+            description: Character cells across, as the shell was told.
+          rows:
+            type: integer
+            minimum: 1
+            maximum: 65535
+            description: Character cells down, as the shell was told.
+    sessionExited:
+      name: sessionExited
+      title: A session's shell stopped
+      summary: >
+        A terminal fact carrying why. The cause distinguishes a shell that exited on its
+        own from one that was terminated and from a session that failed — a surface must be
+        able to tell "you typed exit" from "something killed it" from "this never worked",
+        the same way `acquisitionFailure` separates transport from verification.
+      payload:
+        type: object
+        required: [session_id, cause]
+        additionalProperties: false
+        properties:
+          session_id:
+            type: integer
+            minimum: 1
+            description: The session this fact concerns.
+          cause:
+            type: string
+            enum: [exited, signalled, failed]
+            description: >
+              exited = the shell ran to completion and returned a status;
+              signalled = it was terminated rather than exiting on its own;
+              failed = the session itself broke — the shell never ran, or its terminal
+              went away under it.
+          code:
+            type: [integer, "null"]
+            description: >
+              The shell's exit status, present only for `exited`. Null for the other two:
+              absent rather than zero, because zero already means "exited successfully".
+          detail:
+            type: [string, "null"]
+            description: >
+              Human-readable detail, for diagnostics. The signal name for `signalled`
+              (a name, not a number — Windows has no signals and Unix numbering differs
+              per platform), the reason for `failed`, null for `exited`.

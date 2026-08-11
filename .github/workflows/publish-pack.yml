@@ -69,9 +69,57 @@ jobs:
         if: steps.tuftool-cache.outputs.cache-hit != 'true'
         run: cd scripts/go && go run ./cmd/ensure tuftool --method cargo
 
+      # Two kinds of pack, distinguished by whether the manifest records an external
+      # origin (change `terminal-surface`, design D7):
+      #
+      #   purl present — third-party, e.g. `xkin`. The payload is FETCHED from the npm
+      #     origin the manifest names and verified against it. Nothing is built here, so
+      #     what ships is exactly what was published upstream.
+      #   purl absent  — first-party, e.g. `terminal`. There is nothing to fetch: the
+      #     source is in this repository and the payload is BUILT from it, then verified
+      #     against the committed manifest the same way.
+      #
+      # Both paths end at the same place — a payload tree that matches its manifest — so
+      # everything after this step is shared, including signing.
+      - name: Decide how this pack's payload is obtained
+        id: origin
+        run: |
+          if jq -e 'has("purl")' "$PACK_DIR/manifest.json" > /dev/null; then
+            echo "kind=fetched" >> "$GITHUB_OUTPUT"
+            echo "payload_dir=$PACK_DIR" >> "$GITHUB_OUTPUT"
+          else
+            echo "kind=built" >> "$GITHUB_OUTPUT"
+            echo "payload_dir=$PACK_DIR/dist" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Fetch and verify the pack payload
+        if: steps.origin.outputs.kind == 'fetched'
         working-directory: scripts/py
         run: uv run --package packpub packpub baseline ../../$PACK_DIR
+
+      - uses: actions/setup-node@v4
+        if: steps.origin.outputs.kind == 'built'
+        with:
+          node-version: 22
+
+      - name: Build the pack payload
+        if: steps.origin.outputs.kind == 'built'
+        working-directory: ${{ env.PACK_DIR }}
+        run: |
+          npm ci
+          npm run build
+
+      # The committed manifest is the source of truth either way. A build that produced
+      # different bytes than the manifest pins must fail here rather than be signed:
+      # otherwise "what the repository says is live" and "what is live" drift apart
+      # silently, which is the one property the whole pipeline exists to hold.
+      - name: Verify the payload against its committed manifest
+        if: steps.origin.outputs.kind == 'built'
+        working-directory: scripts/py
+        run: |
+          uv run --package packpub packpub manifest \
+            ../../${{ steps.origin.outputs.payload_dir }} \
+            --verify ../../$PACK_DIR/manifest.json
 
       - name: Decide create-vs-update and the next metadata version
         id: state
@@ -93,7 +141,7 @@ jobs:
         run: |
           uv run --package packpub packpub publish \
             ../../$PACK_DIR/manifest.json \
-            ../../$PACK_DIR \
+            ../../${{ steps.origin.outputs.payload_dir }} \
             ../../signed \
             --root-json ../../app/src-tauri/tuf/root.json \
             --version ${{ steps.state.outputs.version }} \
@@ -104,16 +152,37 @@ jobs:
         with:
           subject-path: signed/metadata/*.json
 
-      # One commit publishes metadata and targets together, so clients never see a
-      # repository whose metadata and content come from different releases.
-      - name: Publish to the artifact repository
+      # The tree is OVERLAID, never replaced. `tuftool update` writes only the
+      # targets this release adds, while the targets metadata it signs names every
+      # target of every release — measured locally: a second release wrote 3 blobs
+      # and signed metadata naming 105. Replacing the tree would delete content the
+      # new metadata still pins, and clients would 404 on the older pack against a
+      # repository whose signatures all verify. Metadata files overwrite by name;
+      # target blobs accumulate, which is what consistent snapshots expect.
+      - name: Assemble the published tree
         run: |
-          rm -rf "published/$TUF_SUBDIR"
           mkdir -p "published/$TUF_SUBDIR"
           cp -r signed/* "published/$TUF_SUBDIR/"
           # Pages runs Jekyll over a branch deploy unless told otherwise. TUF metadata
           # must be served byte-for-byte or every signature check fails.
           touch published/.nojekyll
+
+      # The tree exactly as a client will see it, verified before any client can.
+      # tuftool walks the root chain and hash-verifies every target it writes, so a
+      # blob the signed metadata pins but the tree does not carry fails here rather
+      # than in the field. This is the guard the overlay above needs: nothing else
+      # in the pipeline compares signed metadata against the bytes being served.
+      - name: Verify the assembled tree as a client would
+        run: |
+          tuftool download -r app/src-tauri/tuf/root.json \
+            -m "file://$(realpath "published/$TUF_SUBDIR/metadata")/" \
+            -t "file://$(realpath "published/$TUF_SUBDIR/targets")/" \
+            "$RUNNER_TEMP/tuf-verify"
+
+      # One commit publishes metadata and targets together, so clients never see a
+      # repository whose metadata and content come from different releases.
+      - name: Publish to the artifact repository
+        run: |
           cd published
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

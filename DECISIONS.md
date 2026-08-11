@@ -17,6 +17,19 @@ Concrete tool names live here only — `.canon/` and `openspec/specs/` stay abst
   attestations are available at all, online-key custody Actions secrets, root/online key
   separation — supersedes the single-key D4 posture above):
   [openspec/changes/archive/2026-08-06-pack-publisher-pipeline/design.md](openspec/changes/archive/2026-08-06-pack-publisher-pipeline/design.md)
+- `terminal-surface` (active) — 4 ADRs (PTY control `portable-pty`, terminal emulation
+  `@xterm/xterm` — overriding the `term.js` named in the request, byte transport Tauri's
+  `Channel` + raw invoke body, execution boundary TUF + `AppManifest::commands` capability
+  gating + a composition check):
+  [openspec/changes/terminal-surface/design.md](openspec/changes/terminal-surface/design.md)
+- `terminal-interrupt-signal` (active) — 3 ADRs, **two of them reversed by measurement on
+  2026-08-10** (delivering the interrupt: adopt the platform mechanism and write the byte,
+  after Build/in-process and Build/in-a-helper were each built and refuted; Windows binding
+  `windows-sys`, unchanged; scoping: adopt the pseudoconsole's own scope, replacing console
+  attachment with process group `0`). The reversal's cause — an inherited
+  `CREATE_NEW_PROCESS_GROUP` "ignore Ctrl+C" attribute, cleared by the one call `node-pty`
+  makes and `portable-pty` omits — is design D2:
+  [openspec/changes/terminal-interrupt-signal/design.md](openspec/changes/terminal-interrupt-signal/design.md)
 - `bootstrap-pack-boot` (archived) — 2 ADRs (embedded-size budget enforcement hand-written,
   development materialization by extending packpub's assemble stage over `file://`):
   [openspec/changes/archive/2026-08-05-bootstrap-pack-boot/design.md](openspec/changes/archive/2026-08-05-bootstrap-pack-boot/design.md)

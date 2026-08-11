@@ -27,13 +27,13 @@ be world-readable), and this repository's write access is never handed to the th
 serves the internet. The publish workflow reaches it with one deploy key scoped to that
 repo alone.
 
-| Thing                    | Lives                                              | Public? |
-| ------------------------ | -------------------------------------------------- | ------- |
-| source, anchor, manifests | `dufeutech/Steward-IDE`                            | no      |
-| signed metadata + blobs  | `dufeutech/steward-packs`, branch `main`, under `tuf/` | yes  |
-| deploy key (private half) | secret `PACKS_DEPLOY_KEY` in this repository       | **yes — secret** |
-| online signing key       | secret `PACKPUB_SIGNING_KEY` in this repository    | **yes — secret** |
-| root key                 | operator's password manager                        | **yes — offline, never in CI** |
+| Thing                     | Lives                                                  | Public?                        |
+| ------------------------- | ------------------------------------------------------ | ------------------------------ |
+| source, anchor, manifests | `dufeutech/Steward-IDE`                                | no                             |
+| signed metadata + blobs   | `dufeutech/steward-packs`, branch `main`, under `tuf/` | yes                            |
+| deploy key (private half) | secret `PACKS_DEPLOY_KEY` in this repository           | **yes — secret**               |
+| online signing key        | secret `PACKPUB_SIGNING_KEY` in this repository        | **yes — secret**               |
+| root key                  | operator's password manager                            | **yes — offline, never in CI** |
 
 Publishing only ever uses the online key: `tuftool` signs `snapshot`, `targets` and
 `timestamp` and takes the already-signed root as input. That is what keeps a CI compromise
@@ -77,10 +77,10 @@ gh api -X POST repos/dufeutech/steward-packs/pages \
 
 The published URLs are then fixed for good:
 
-| Role     | URL                                                          |
-| -------- | ------------------------------------------------------------ |
-| metadata | `https://dufeutech.github.io/steward-packs/tuf/metadata/`     |
-| targets  | `https://dufeutech.github.io/steward-packs/tuf/targets/`      |
+| Role     | URL                                                       |
+| -------- | --------------------------------------------------------- |
+| metadata | `https://dufeutech.github.io/steward-packs/tuf/metadata/` |
+| targets  | `https://dufeutech.github.io/steward-packs/tuf/targets/`  |
 
 Changing them later means shipping a new binary, because they are compiled into the
 config every installed client reads. Get them right once.
@@ -88,9 +88,39 @@ config every installed client reads. Get them right once.
 ## 2. Publish a release
 
 A release is whatever the committed manifest pins. Update
-`app/packs/<pack>/manifest.json` and merge that first — the workflow fetches the origin
-the manifest records and verifies the payload against it before anything is signed, so
-the repository stays the source of truth about what is live.
+`app/packs/<pack>/manifest.json` and merge that first — the workflow obtains the payload,
+verifies it against that manifest, and only then signs, so the repository stays the source
+of truth about what is live.
+
+### Two kinds of pack
+
+How the payload is obtained depends on one thing: **whether the manifest records a `purl`.**
+The workflow branches on it; you do not pass a flag.
+
+| Manifest   | Kind        | Payload comes from                               | Payload root             | Example    |
+| ---------- | ----------- | ------------------------------------------------ | ------------------------ | ---------- |
+| has `purl` | third-party | **fetched** from the npm origin the `purl` names | `app/packs/<pack>/`      | `xkin`     |
+| no `purl`  | first-party | **built** from source in this repository         | `app/packs/<pack>/dist/` | `terminal` |
+
+Both end at the same place — a payload tree that matches its manifest — and everything from
+signing onward is identical.
+
+For a first-party pack, regenerate the manifest after every payload change, or the publish
+fails at the verification step rather than shipping bytes the repository does not describe:
+
+```bash
+cd app/packs/terminal && npm ci && npm run build
+cd ../../../scripts/py
+uv run --package packpub packpub manifest ../../app/packs/terminal/dist \
+  --id pack:assets.terminal --version <next-semver> \
+  --script terminal.js --style terminal.css \
+  --out ../../app/packs/terminal/manifest.json
+```
+
+The built payload is **not committed** — `app/.gitignore` ignores `dist`, and the workflow
+rebuilds it. That is the opposite of the bootstrap pack, whose payload _is_ committed
+precisely because a recovery surface that must be built before it works is not a recovery
+surface.
 
 That manifest lives outside `app/src-tauri/`: it is publisher input, not something the
 binary carries. The binary embeds only the bootstrap recovery surface, so a new install
@@ -106,9 +136,23 @@ exists, bumps the metadata version, signs with `PACKPUB_SIGNING_KEY`, attaches a
 provenance attestation, and pushes metadata and content in a single commit so clients
 never see a tree whose halves come from different releases.
 
+### The published tree accumulates — never clear it out
+
+`tuftool update` writes only the targets the release being signed _adds_, but the targets
+metadata it signs names **every target of every release**. Publishing `terminal` on top of
+a live `xkin` produces three new blobs and metadata pinning 105. So the workflow copies the
+signed output _over_ the published tree; it does not replace it. Deleting the old blobs
+would leave a repository whose signatures all verify and whose content 404s — the worst
+kind of broken, because nothing about it looks wrong until a client tries to fetch a pack.
+
+The same applies by hand: never `rm -rf` the `tuf/` directory in the artifact repository to
+"clean up" unreferenced blobs. Before pushing, the workflow runs `tuftool download` against
+the assembled tree over `file://` — a full client walk of the root chain plus a hash check
+of every target — so this class of mistake fails in CI rather than in the field.
+
 ## 3. Verify what is actually served
 
-Do this from a clean machine or profile — the point is to prove an *unauthenticated*
+Do this from a clean machine or profile — the point is to prove an _unauthenticated_
 client on the public internet can fetch and verify the tree, not that your logged-in
 session can.
 
@@ -129,7 +173,7 @@ re-run rather than debugging a 404 that has not propagated yet.
 
 ## 4. Confirm provenance (optional, per release)
 
-The publish workflow attests the signed *metadata*, not the pack manifest — the metadata is
+The publish workflow attests the signed _metadata_, not the pack manifest — the metadata is
 what pins every blob, so attesting it covers the release. Verify one of those files, fetched
 from what is actually served:
 
@@ -162,13 +206,13 @@ committed anchor ships inside the binary, and the updater reads it from there.
 
 Then run the app and read the console. Success looks like one of:
 
-| Line                                          | Means                                  |
-| --------------------------------------------- | -------------------------------------- |
-| `updater: xkin@<version> activated (pending boot)` | fetched, verified, staged, activated |
-| *(silence)*                                    | the published version is already active |
-| `updater: xkin: TUF load/verify: ...`          | the endpoint or the signature is wrong  |
+| Line                                               | Means                                   |
+| -------------------------------------------------- | --------------------------------------- |
+| `updater: xkin@<version> activated (pending boot)` | fetched, verified, staged, activated    |
+| _(silence)_                                        | the published version is already active |
+| `updater: xkin: TUF load/verify: ...`              | the endpoint or the signature is wrong  |
 
-An update that lands stays *pending* until the shell boots successfully; a boot failure
+An update that lands stays _pending_ until the shell boots successfully; a boot failure
 rolls it back automatically and the previous version reactivates.
 
 **Rollback**: delete the `update` block. Clients keep serving whatever their store already
@@ -184,19 +228,36 @@ through its default transport and the app performs no scheme validation, so a lo
 signed repository on disk is a complete endpoint — no server, no HTTPS, no ports.
 
 ```bash
-# 1. Fetch the pinned payload (the only step that needs the network).
+# 1. Obtain both payloads — fetched for xkin, built for terminal, exactly as
+#    section 2 describes. Only the fetch needs the network.
 cd scripts/py && uv run --package packpub packpub baseline ../../app/packs/xkin
+(cd ../../app/packs/terminal && npm ci && npm run build)
 
 # 2. Throwaway keys and a dev anchor. Never the production key: publishing locally
-#    means signing locally.
+#    means signing locally. This step creates no target tree, so it needs no
+#    container even on Windows.
 uv run --package packpub packpub ceremony \
   --anchor /tmp/dev/root.json --key-out /tmp/dev/key.pem \
   --root-key-out /tmp/dev/root-key.pem --bits 2048
 
-# 3. Sign a repository through the same publish path CI uses.
-PACKPUB_SIGNING_KEY="$(cat /tmp/dev/key.pem)" uv run --package packpub packpub publish \
-  ../../app/packs/xkin/manifest.json ../../app/packs/xkin /tmp/dev/repo \
+# 3. Sign both packs through the same publish path CI uses: xkin creates the
+#    repository, terminal updates it.
+export PACKPUB_SIGNING_KEY="$(cat /tmp/dev/key.pem)"
+uv run --package packpub packpub publish \
+  ../../app/packs/xkin/manifest.json ../../app/packs/xkin /tmp/dev/repo1 \
   --root-json /tmp/dev/root.json --version 1 --segment xkin
+uv run --package packpub packpub publish \
+  ../../app/packs/terminal/manifest.json ../../app/packs/terminal/dist /tmp/dev/repo2 \
+  --root-json /tmp/dev/root.json --version 2 --segment terminal \
+  --metadata-url file:///tmp/dev/repo1/metadata/
+
+# 4. Overlay, in that order — the second release carries only its own blobs.
+mkdir -p /tmp/dev/repo
+cp -r /tmp/dev/repo1/. /tmp/dev/repo/ && cp -r /tmp/dev/repo2/. /tmp/dev/repo/
+
+# 5. Prove it before the app sees it: 105 targets, both manifests, exit zero.
+tuftool download -r /tmp/dev/root.json \
+  -m file:///tmp/dev/repo/metadata/ -t file:///tmp/dev/repo/targets/ /tmp/dev/verify
 ```
 
 Then point the app at it, **locally and uncommitted**:
@@ -210,10 +271,30 @@ Then point the app at it, **locally and uncommitted**:
 Both are tracked files. Revert them before committing — a dev anchor merged to `main`
 would ship a binary that trusts throwaway keys and rejects real releases.
 
+### On Windows, step 3 alone needs a container
+
 `packpub publish` shells out to `tuftool`, which places targets with symlinks. Windows
-refuses that without Developer Mode or elevation, so run steps 2–3 under Linux, macOS,
-WSL, or the container command in the fixture README — the same constraint
-`app/src-tauri/tests/fixtures/regenerate.sh` documents.
+refuses that without Developer Mode or elevation — the same constraint
+`app/src-tauri/tests/fixtures/regenerate.sh` documents. Nothing else here is affected:
+the ceremony, the payload builds, `tuftool download` and the app itself all run natively.
+
+Sign on the container's own filesystem and copy the result out **dereferenced**, or the
+symlinks tuftool leaves behind arrive on the Windows side as unusable targets:
+
+```bash
+docker run --rm -v "$PWD:/repo" -v /tmp/dev:/out rust:1-slim bash -c '
+  apt-get update -qq && apt-get install -y -qq cmake nasm curl ca-certificates &&
+  cargo install tuftool && curl -LsSf https://astral.sh/uv/install.sh | sh &&
+  export PATH=/root/.local/bin:$PATH UV_PROJECT_ENVIRONMENT=/opt/venv &&
+  cd /repo/scripts/py && export PACKPUB_SIGNING_KEY="$(cat /out/key.pem)" &&
+  … the two publish commands from step 3, writing to /work/repo1 and /work/repo2 … &&
+  cp -rL /work/repo1 /out/repo1 && cp -rL /work/repo2 /out/repo2'
+```
+
+Two details that cost an hour each if missed: Git Bash rewrites container paths unless
+`MSYS_NO_PATHCONV=1` is set on `docker run`, and `UV_PROJECT_ENVIRONMENT` must point
+outside the mount — a Linux `.venv` written into the checkout carries a `lib64` symlink
+Windows cannot delete afterwards.
 
 ## Ongoing
 

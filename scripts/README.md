@@ -42,12 +42,13 @@ uv run scripts/py/lab/<name>.py              # inline deps, ephemeral env, no lo
 
 ## What's here now
 
-| Tool                    | Language | Job                                                                            |
-| ----------------------- | -------- | ------------------------------------------------------------------------------ |
-| `go/cmd/ensure`         | Go       | Install an adopted third-party CLI (`tokei`, `tuftool`)                        |
-| `py/tools/mdlinks`      | Python   | Find broken relative links in Markdown                                         |
-| `py/tools/packpub`      | Python   | Publish asset packs: manifests, baseline regen, signed releases, root ceremony |
-| `sh/format_markdown.sh` | sh       | Prettier over all Markdown — port candidate                                    |
+| Tool                    | Language | Job                                                                              |
+| ----------------------- | -------- | -------------------------------------------------------------------------------- |
+| `go/cmd/ensure`         | Go       | Install an adopted third-party CLI (`tokei`, `tuftool`)                          |
+| `py/tools/appdrive`     | Python   | Drive a running window (Windows): focus, keys, clicks, captures — by-hand checks |
+| `py/tools/mdlinks`      | Python   | Find broken relative links in Markdown                                           |
+| `py/tools/packpub`      | Python   | Publish asset packs: manifests, baseline regen, signed releases, root ceremony   |
+| `sh/format_markdown.sh` | sh       | Prettier over all Markdown — port candidate                                      |
 
 ## Adopted tools
 
