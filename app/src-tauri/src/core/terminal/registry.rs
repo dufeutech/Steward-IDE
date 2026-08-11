@@ -5,7 +5,9 @@
 
 use std::collections::HashMap;
 
-use super::session::{ExitCause, Pty, PtySpawner, SessionError, SessionId, Size, SpawnRequest};
+use super::session::{
+    ExitCause, Presenting, Pty, PtySpawner, SessionError, SessionId, Size, SpawnRequest,
+};
 
 struct Entry {
     pty: Box<dyn Pty>,
@@ -75,6 +77,13 @@ impl Registry {
         self.live_mut(id)?.pty.resize(size)
     }
 
+    /// Interrupt what one session is running. Routed through `live_mut` like every other
+    /// operation, so "no such session" and "that session has ended" are decided in one
+    /// place rather than restated here.
+    pub fn interrupt(&mut self, id: SessionId, presenting: Presenting) -> Result<(), SessionError> {
+        self.live_mut(id)?.pty.interrupt(presenting)
+    }
+
     /// Close a session and forget it. Closing an already-ended session succeeds: the
     /// shell exiting first is the common case, not an error the surface should handle.
     pub fn close(&mut self, id: SessionId) -> Result<(), SessionError> {
@@ -126,6 +135,7 @@ mod tests {
     struct Recorder {
         written: Vec<u8>,
         sizes: Vec<Size>,
+        interrupts: Vec<Presenting>,
         closed: bool,
     }
 
@@ -139,6 +149,10 @@ mod tests {
         }
         fn resize(&mut self, size: Size) -> Result<(), SessionError> {
             self.0.lock().unwrap().sizes.push(size);
+            Ok(())
+        }
+        fn interrupt(&mut self, presenting: Presenting) -> Result<(), SessionError> {
+            self.0.lock().unwrap().interrupts.push(presenting);
             Ok(())
         }
         fn close(&mut self) -> Result<(), SessionError> {
@@ -207,7 +221,65 @@ mod tests {
             registry.resize(ghost, size()),
             Err(SessionError::Unknown(ghost))
         );
+        assert_eq!(
+            registry.interrupt(ghost, Presenting::Normally),
+            Err(SessionError::Unknown(ghost))
+        );
         assert_eq!(registry.close(ghost), Err(SessionError::Unknown(ghost)));
+    }
+
+    #[test]
+    fn scenario_only_the_addressed_session_is_interrupted() {
+        let spawner = FakeSpawner::default();
+        let mut registry = Registry::new();
+        let first = open(&mut registry, &spawner).unwrap();
+        open(&mut registry, &spawner).unwrap();
+
+        registry.interrupt(first, Presenting::Normally).unwrap();
+
+        assert_eq!(
+            spawner.nth(0).0.lock().unwrap().interrupts,
+            vec![Presenting::Normally]
+        );
+        assert!(
+            spawner.nth(1).0.lock().unwrap().interrupts.is_empty(),
+            "the other session's command keeps running"
+        );
+    }
+
+    #[test]
+    fn what_the_surface_reports_reaches_the_pty_unchanged() {
+        // The core does not decide delivery, so it must not quietly normalise the
+        // observation on the way through either (design D3).
+        let spawner = FakeSpawner::default();
+        let mut registry = Registry::new();
+        let id = open(&mut registry, &spawner).unwrap();
+
+        registry.interrupt(id, Presenting::FullScreen).unwrap();
+        registry.interrupt(id, Presenting::Normally).unwrap();
+
+        assert_eq!(
+            spawner.nth(0).0.lock().unwrap().interrupts,
+            vec![Presenting::FullScreen, Presenting::Normally]
+        );
+    }
+
+    #[test]
+    fn scenario_interrupting_a_session_that_has_ended() {
+        let spawner = FakeSpawner::default();
+        let mut registry = Registry::new();
+        let id = open(&mut registry, &spawner).unwrap();
+        registry.mark_ended(id, ExitCause::Exited { code: 0 });
+
+        assert_eq!(
+            registry.interrupt(id, Presenting::Normally),
+            Err(SessionError::Ended(id)),
+            "an interrupt after the session ended is refused with a reason, not ignored"
+        );
+        assert!(
+            spawner.nth(0).0.lock().unwrap().interrupts.is_empty(),
+            "and no process is signalled"
+        );
     }
 
     #[test]

@@ -75,6 +75,23 @@ impl fmt::Display for SizeRejected {
     }
 }
 
+/// What is presenting in a session, as only the surface can see it (design D3).
+///
+/// The core cannot determine this: the console will not report it through ConPTY (measured —
+/// `ENABLE_PROCESSED_INPUT` stays set while a program holds the keyboard raw), and deriving
+/// it from the byte stream would mean a second terminal emulator in the adapter. So the
+/// surface, which already runs one, reports what it sees and the core decides what to do
+/// about it. A fact from where the presenting happens, exactly like the size it reports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Presenting {
+    /// The ordinary buffer: a shell at a prompt, or a command streaming output. An
+    /// interrupt is meant for the running command.
+    Normally,
+    /// A full-screen program holds the alternate screen buffer, and with it the keyboard.
+    /// The chord belongs to that program as input, not to the operating system as a signal.
+    FullScreen,
+}
+
 /// Why a session stopped. The three arms are kept distinct because a surface must be able
 /// to tell a clean exit from a kill from a session that never worked — the same reasoning
 /// that keeps `transport`/`verification`/`local` apart in the acquisition events.
@@ -191,6 +208,13 @@ pub struct SpawnRequest {
 pub trait Pty: Send {
     fn write(&mut self, bytes: &[u8]) -> Result<(), SessionError>;
     fn resize(&mut self, size: Size) -> Result<(), SessionError>;
+    /// Interrupt whatever the session is running, leaving the session itself alive.
+    ///
+    /// Distinct from `write` because it is not input: on Windows it becomes an operating
+    /// system control event, which no sequence of bytes can be turned into (design D2).
+    /// `presenting` carries what only the surface can observe; how it is honoured is the
+    /// adapter's business, and differs per platform (D3, D4).
+    fn interrupt(&mut self, presenting: Presenting) -> Result<(), SessionError>;
     /// Terminate the shell and release the session's resources. Idempotent: closing an
     /// already-closed session is not an error, because the shell may have exited first.
     fn close(&mut self) -> Result<(), SessionError>;
