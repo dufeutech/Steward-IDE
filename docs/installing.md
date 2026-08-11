@@ -4,12 +4,12 @@ Every release publishes installers for **Windows** and **Linux**. Download them 
 [releases page](https://github.com/dufeutech/Steward-IDE/releases) — each release carries the
 artifacts below and nothing else.
 
-| Platform | Artifact                             | Install with                                   |
-| -------- | ------------------------------------ | ---------------------------------------------- |
-| Windows  | `steward-ide_<version>_x64_en-US.msi`   | double-click, or `msiexec /i <file>`           |
-| Windows  | `steward-ide_<version>_x64-setup.exe`   | double-click — the NSIS installer, if you prefer it to the MSI |
-| Linux    | `steward-ide_<version>_amd64.deb`       | `sudo apt install ./<file>`                    |
-| Linux    | `steward-ide_<version>_amd64.AppImage`  | `chmod +x <file> && ./<file>` — no install step |
+| Platform | Artifact                               | Install with                                                   |
+| -------- | -------------------------------------- | -------------------------------------------------------------- |
+| Windows  | `steward-ide_<version>_x64_en-US.msi`  | double-click, or `msiexec /i <file>`                           |
+| Windows  | `steward-ide_<version>_x64-setup.exe`  | double-click — the NSIS installer, if you prefer it to the MSI |
+| Linux    | `steward-ide_<version>_amd64.deb`      | `sudo apt install ./<file>`                                    |
+| Linux    | `steward-ide_<version>_amd64.AppImage` | `chmod +x <file> && ./<file>` — no install step                |
 
 Take either Windows artifact or either Linux one; they install the same application. The MSI
 suits managed deployment, the AppImage suits running without touching the system at all.

@@ -32,15 +32,15 @@ the TUF trust anchor (`app/src-tauri/tuf/root.json`) and the content endpoints
 clients that trust throwaway keys and reject real content, and the only repair is another
 release.
 
-| Refusal                       | What it means                                                            |
-| ----------------------------- | ------------------------------------------------------------------------ |
-| non-production signer         | `root.json` is not the production root — a local-endpoint anchor is still in the tree |
-| endpoint is not production    | a content URL points somewhere other than the published tree (`localhost`, a fork, plain HTTP) |
-| requested version ≠ crate     | the tag disagrees with `Cargo.toml`; a mistyped tag is refused rather than published as a mislabelled artifact |
-| no `*_url` endpoint found     | the check could not find anything to compare, which fails rather than passes |
+| Refusal                    | What it means                                                                                                  |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| non-production signer      | `root.json` is not the production root — a local-endpoint anchor is still in the tree                          |
+| endpoint is not production | a content URL points somewhere other than the published tree (`localhost`, a fork, plain HTTP)                 |
+| requested version ≠ crate  | the tag disagrees with `Cargo.toml`; a mistyped tag is refused rather than published as a mislabelled artifact |
+| no `*_url` endpoint found  | the check could not find anything to compare, which fails rather than passes                                   |
 
 This is a different question from [`packpub check-anchor`](../../.canon/checks.md), which asks
-whether an anchor is *well formed* — expiry, key split, thresholds. A development anchor
+whether an anchor is _well formed_ — expiry, key split, thresholds. A development anchor
 passes that one.
 
 ## Cutting it
