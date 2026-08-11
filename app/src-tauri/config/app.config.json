@@ -8,6 +8,11 @@
       "role": "application"
     },
     {
+      "pack": "terminal",
+      "id": "pack:assets.terminal",
+      "role": "application"
+    },
+    {
       "pack": "bootstrap",
       "id": "pack:assets.bootstrap",
       "role": "bootstrap",
