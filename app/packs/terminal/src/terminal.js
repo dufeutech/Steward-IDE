@@ -26,6 +26,20 @@ const APPLICATION = "application";
 const TOGGLE = (e) =>
   e.ctrlKey && e.shiftKey && (e.code === "Backquote" || e.key === "~");
 
+/// The interrupt chord. Routed to the session as an interrupt rather than as `\x03`,
+/// because on Windows no byte written to the input stream becomes a control event for a
+/// running command — see the `terminal-interrupt-signal` change.
+///
+/// Shift is excluded deliberately: Ctrl+Shift+C is a different chord and must not be
+/// swallowed here. This does *not* bind Ctrl+C to a surface action — the chord still goes
+/// to the session, which is what the spec forbids the surface from preventing.
+const INTERRUPT = (e) =>
+  e.ctrlKey &&
+  !e.shiftKey &&
+  !e.altKey &&
+  !e.metaKey &&
+  (e.code === "KeyC" || e.key === "c" || e.key === "C");
+
 const encoder = new TextEncoder();
 
 function tauri() {
@@ -137,7 +151,16 @@ class TerminalSurface {
 
     // Every key belongs to the session except the one chord that shows and hides this
     // panel (spec: "routes input to the session without intercepting it").
-    term.attachCustomKeyEventHandler((e) => !TOGGLE(e));
+    term.attachCustomKeyEventHandler((e) => {
+      if (TOGGLE(e)) return false;
+      // Keydown only, and returning false so xterm does not *also* emit `\x03`: the spec
+      // requires the chord reach the session exactly once.
+      if (e.type === "keydown" && INTERRUPT(e)) {
+        void this.interrupt();
+        return false;
+      }
+      return true;
+    });
 
     term.open(this.screen);
     this.term = term;
@@ -229,6 +252,20 @@ class TerminalSurface {
         headers: { "x-terminal-session": String(this.sessionId) },
       })
       .catch((err) => console.warn("terminal: write refused:", err));
+  }
+
+  /// Ask the session to interrupt what it is running.
+  ///
+  /// The one thing reported with it is whether a full-screen program holds the alternate
+  /// screen buffer — something only this side can see, and which the backend cannot get
+  /// from the console (measured: the flag that would say so does not survive ConPTY). The
+  /// backend decides what to do about it; this reports, it does not choose.
+  interrupt() {
+    if (this.sessionId === null || !this.term) return;
+    const fullScreen = this.term.buffer.active.type === "alternate";
+    tauri()
+      .invoke("terminal_interrupt", { session: this.sessionId, fullScreen })
+      .catch((err) => console.warn("terminal: interrupt refused:", err));
   }
 
   measure() {
