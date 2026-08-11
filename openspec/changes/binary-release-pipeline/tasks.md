@@ -96,19 +96,49 @@
       `projectPath` and `releaseId` only — no version and no target list are passed in,
       because a value passed in is a value that can disagree with the crate (D2). Input and
       output names were checked against the action's own `action.yml`, not assumed.
-- [~] 4.5 Configure the matrix so a failure in either entry publishes nothing (spec:
+      **Both runners exercised for real** on tag `v0.0.1` (run `31538855446`): four bundles
+      produced, `steward-ide_0.0.1_{amd64.deb,amd64.AppImage,x64-setup.exe,x64_en-US.msi}`.
+      One defect only a clean checkout could expose: the action drives the bundler through
+      `npm run tauri build`, and with no `node_modules` it died in 33 s with `tauri: not
+      found`, exit 127. Every local verification had run in a tree where `npm install`
+      happened long ago. Fixed with `setup-node` + `npm ci`.
+- [x] 4.5 Configure the matrix so a failure in either entry publishes nothing (spec:
       all-or-nothing). Verify by forcing one entry to fail and confirming no release appears.
-      **Configured, not yet verified.** The mechanism is a draft: `create-release` opens one,
-      the matrix uploads into it under `fail-fast: true`, and `publish` — which needs the whole
-      matrix — is the only thing that flips `draft=false`. A recipient can therefore never see
-      a partial asset set. Verifying it needs a deliberately-failing tag pushed to the real
-      repository; see the note under section 6.
+      **Verified twice, in both shapes that matter**, on a throwaway branch and tag deleted
+      afterwards (crate temporarily `0.0.1` so the tag passed the version gate).
+
+      *Early failure* (run `31538281098`): Linux failed at 33 s → Windows **cancelled** →
+      `publish` **skipped**.
+
+      *Late failure* (run `31538855446`): both platforms built, uploaded and attested, then
+      Windows was forced to fail. This is the case worth proving, because the draft was
+      holding a **complete** four-asset set at that moment — and `publish` was still
+      **skipped**, the release stayed `Draft`, and `gh release list` showed nothing. A
+      recipient could not see it.
+
+      The mechanism is the draft itself: `publish` needs the whole matrix, and it is the only
+      thing that flips `draft=false`.
 - [x] 4.6 Attest each published artifact with build provenance (D5), the same mechanism
       `publish-pack.yml` already applies to signed metadata. Attestation runs inside the matrix
       over the action's `artifactPaths` output, so each platform attests what it just built.
-- [ ] 4.7 Verify an attestation from the recipient's side, using only the artifact and public
+- [x] 4.7 Verify an attestation from the recipient's side, using only the artifact and public
       information — the spec requires a third party can do this, so do it as one.
-      Blocked until a release exists — belongs with 6.3/6.4.
+      Done against the probe's own artifacts before they were deleted — downloaded the `.deb`
+      and ran `gh attestation verify <file> --repo dufeutech/Steward-IDE` with no other input.
+
+      Exit 0, and it **named the source**: builder
+      `dufeutech/Steward-IDE/.github/workflows/release.yml`, ref `refs/tags/v0.0.1`, commit
+      `77ec9a7275b7ceb0df3b11ea019ecd81889804db` — which satisfies *"verification succeeds and
+      identifies the source revision"*.
+
+      Both negative scenarios fail as they must: an artifact this process did not produce
+      exits 1 (no attestation for that digest), and so does a **tampered copy of the real
+      one** — one byte appended changes the digest. That second case is not in the spec and is
+      the one a user actually faces.
+
+      Caveat on how far this goes: the artifact came from a draft, so the download needed repo
+      access. Verification itself used only the file and public API, which is the property
+      under test; 6.3/6.4 will repeat it against a genuinely public release.
 
 ## 5. Documentation (Rule 8, same change set)
 
