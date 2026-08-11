@@ -44,6 +44,21 @@ portable-pty = "0.9"
 # version would quietly get it wrong.
 which = "8"
 
+# terminal-interrupt-signal (ADR "Windows platform binding"). Interrupting a running
+# command on Windows means raising a console control event, and there is no crate that
+# does that — `ctrlc` receives Ctrl+C rather than sending it. What can be adopted is the
+# binding: `windows-sys` is Microsoft-published and generated from the platform metadata,
+# so six `extern "system"` signatures are not transcribed by hand, where being wrong is
+# undefined behaviour rather than a compile error. Already in the tree via Tauri.
+# Confined to the Windows arm of `adapters/pty.rs`.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Console",
+] }
+
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt"] }
