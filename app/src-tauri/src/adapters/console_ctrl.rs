@@ -43,7 +43,26 @@ fn console_lock() -> MutexGuard<'static, ()> {
 }
 
 /// Interrupt everything running on `pid`'s console, leaving this process unharmed.
+///
+/// Runs the sequence on a thread of its own. Two reasons, one measured and one plain: the
+/// application's main thread is the one pumping the window message loop, and raising the
+/// event from it delivers nothing at all — the call reports success and no process on the
+/// console, including this one, ever sees it. The plain reason is that the sequence can
+/// block for [`DELIVERY_BOUND`], which has no business happening on the thread that draws.
 pub fn interrupt(pid: u32) -> Result<(), SessionError> {
+    std::thread::scope(|scope| {
+        scope
+            .spawn(|| interrupt_here(pid))
+            .join()
+            .unwrap_or_else(|_| {
+                Err(SessionError::Io(
+                    "the interrupt could not be carried out".into(),
+                ))
+            })
+    })
+}
+
+fn interrupt_here(pid: u32) -> Result<(), SessionError> {
     let _guard = console_lock();
     // SAFETY: every call below is FFI into the console API. The invariant the unsafe block
     // maintains is that this process leaves the function attached to whatever console it

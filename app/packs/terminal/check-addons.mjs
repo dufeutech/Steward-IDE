@@ -32,5 +32,25 @@ if (svc) {
 }
 term.write('hello \u001b[31mred\u001b[0m 漢字\r\n', () => {
   console.log('write callback fired  : yes');
-  console.log('RESULT: addons load and drive xterm 6.0.0');
+  void checkAlternateBuffer();
 });
+
+// The alternate screen buffer decides how an interrupt is delivered: a full-screen program
+// owns the keyboard, so the chord is its input rather than a signal (change
+// `terminal-interrupt-signal`, design D3). The console cannot be asked this on Windows —
+// ENABLE_PROCESSED_INPUT does not survive ConPTY — so xterm's answer is the only source,
+// and an upgrade that changed it would silently start killing editors.
+async function checkAlternateBuffer() {
+  const write = (s) => new Promise((r) => term.write(s, r));
+  const seen = { start: term.buffer.active.type };
+  await write('[?1049h');
+  seen.entered = term.buffer.active.type;
+  await write('[?1049l');
+  seen.left = term.buffer.active.type;
+  console.log('buffer.active.type    :', `${seen.start} → ${seen.entered} → ${seen.left}`);
+  if (seen.start !== 'normal' || seen.entered !== 'alternate' || seen.left !== 'normal') {
+    console.error(`FAIL: alternate-buffer reporting changed: ${JSON.stringify(seen)}`);
+    process.exit(1);
+  }
+  console.log('RESULT: addons load and drive xterm 6.0.0');
+}

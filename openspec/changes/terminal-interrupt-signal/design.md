@@ -154,6 +154,41 @@ stops and the shell answers in **52.7 ms**. The refuted signature, shared by all
 candidates, is ~21 s — `ping` running to completion. The session survives, executes input
 afterwards, and the process is still attached to its original console with working stdout.
 
+**It does not work in the application. [open defect — D2a]**
+
+Every test above passes, and the interrupt still does nothing when a person presses the
+chord in the running app. Found by task 7.3, which is the only check that could have found
+it: the surface path is exercised nowhere else.
+
+The surface is not implicated. `terminal_interrupt` arrives with `full_screen=false`,
+returns `Ok(())`, and the sequence reports success — the chord wiring, the command, the
+capability grant and the observation are all correct.
+
+What differs is the *process*, and the trace narrows it to one line:
+
+| Where | `had_console` | attached, and sharing the shell's console | `GenerateConsoleCtrlEvent` | delivered to us | command stops |
+| ------- | --------------- | ------------------------------------------- | ---------------------------- | ----------------- | --------------- |
+| `cargo test`, console freed first | false | yes — `[me, conhost, shell]` | returns 1 | **true** | yes |
+| the running application            | false | yes — `[me, conhost, shell]` | returns 1 | **false** | no |
+
+The two are indistinguishable up to the raise: same shell (`powershell.exe`), same
+console membership, same return value. In the application the event reaches *nobody* —
+not the shell, not `ping`, not even this process, whose handler is registered and fires
+in the test. `GenerateConsoleCtrlEvent` succeeds and the event evaporates.
+
+Two candidates are already refuted:
+
+| Candidate | How it was tested | Result |
+| ----------- | ------------------- | -------- |
+| the application has no console of its own, unlike `cargo test` | `FreeConsole` first, then the production `console_ctrl::interrupt` against `powershell.exe` | refuted — `delivered_to_us=true`, command stops |
+| the sequence runs on the thread pumping the window message loop | moved onto a scoped thread of its own | refuted — identical trace, still `delivered_to_us=false` |
+
+The change is therefore **not shippable**: it is correct everywhere it can be tested
+automatically and wrong in the one place that matters. The pre-registered fallback in ADR 1
+— a helper executable that attaches and raises in a process of its own — now looks less
+like a costlier alternative and more like the answer, because the thing that differs is
+precisely the application process's own console state, and a helper has none of it.
+
 **Why not the alternatives:**
 
 | Option                                                     | Rejected because                                                                                                                                              |

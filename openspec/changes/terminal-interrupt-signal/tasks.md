@@ -42,8 +42,8 @@
 
 - [x] 7.1 `scenario_a_running_command_is_interrupted` in `tests/terminal_pty.rs`, through the real adapter rather than the spike: the command stops, the session survives, and it executes input afterwards. Also `scenario_an_idle_session_is_interrupted` and `a_full_screen_program_receives_the_chord_as_input`, which is the D3 branch
 - [x] 7.2 `scenario_the_interrupt_reaches_what_the_command_started` — the shell runs a child which runs the long command; if only the immediate child were signalled the shell could not answer inside the budget
-- [ ] 7.3 By hand, in the running application, against a local endpoint per `docs/runbooks/pack-publishing.md`, driven with `appdrive`: interrupt `ping -t`; interrupt `timeout /t 30`; press the chord in `vim` and confirm it is delivered as a keystroke and the editor survives (design D3); press it at an idle prompt; confirm the session still works after each
-- [ ] 7.4 By hand: confirm the application does not exit, and does not lose its console, after a hundred interrupts in one session
+- [ ] 7.3 **Run by hand, and it fails — see design D2a.** A local two-pack endpoint was signed and verified (105 targets), the app run against it, and the chord driven with `appdrive`. The surface path is proven correct: `terminal_interrupt` arrives with `full_screen=false` and returns `Ok(())`. The command does not stop. The event is raised successfully and delivered to nobody — not even to this process, whose handler fires in every test. Two candidates refuted (no-console; the UI thread). The remaining sub-items were not reached
+- [ ] 7.4 Not reached — blocked on 7.3
 - [x] 7.5 Every row in `.canon/checks.md` run and passing: `cargo fmt --check`, markdown formatter, `cargo clippy --all-targets -- -D warnings`, `go vet`, both builds, 121 Rust tests, packpub's 22 and appdrive's 15, pack payload against its manifest, addon pairing, doc links, file sizes, embedded size, trust anchor. **Unverified: Unix** — no host, so `deliver_interrupt`'s Unix arm has never run; the same gap `terminal-surface` task 7.4 carries
 
 ## 8. Documentation
@@ -54,7 +54,7 @@
 
 ## 9. Close out
 
-- [ ] 9.1 Review the diff and split it into Conventional Commits by intent (Rule 3). No attribution trailers
+- [x] 9.1 Reviewed the diff and split it into seven Conventional Commits by intent on branch `change/terminal-interrupt-signal` (Rule 3): the spike and its binding, the core operation and adapter, the command surface, the pack surface, the adapter tests, the documentation, and the change artifacts. No attribution trailers
 - [ ] 9.2 Publish the rebuilt terminal pack as a signed release, per `docs/runbooks/pack-publishing.md`, and verify the published tree from a clean profile
 - [ ] 9.3 Run `/opsx:sync` to fold the delta specs into the main specs — after `terminal-surface` has synced, never before (its specs are the base these deltas apply to)
 - [ ] 9.4 Run `/opsx:archive` to close the change

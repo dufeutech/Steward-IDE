@@ -262,6 +262,10 @@ struct Spike {
 
 impl Spike {
     fn start() -> Self {
+        Self::start_under("cmd.exe")
+    }
+
+    fn start_under(program: &str) -> Self {
         let pair = native_pty_system()
             .openpty(PtySize {
                 rows: 24,
@@ -271,12 +275,12 @@ impl Spike {
             })
             .expect("a pseudoconsole can be allocated on this machine");
 
-        let mut command = CommandBuilder::new("cmd.exe");
+        let mut command = CommandBuilder::new(program);
         command.cwd(std::env::temp_dir());
         let child = pair
             .slave
             .spawn_command(command)
-            .expect("cmd.exe exists on every Windows machine");
+            .unwrap_or_else(|e| panic!("{program} must start on this machine: {e}"));
         // Holding the slave open would keep the master's reader from ever seeing EOF.
         drop(pair.slave);
 
@@ -476,6 +480,45 @@ fn spike_the_control_event_interrupts_a_running_command() {
 }
 
 #[test]
+fn the_control_event_interrupts_a_running_command_under_powershell() {
+    // The configured shell for this application is PowerShell, not `cmd.exe` — and
+    // terminal-surface D4c recorded the original defect as reproducing under both, so the
+    // fix has to hold under both. Found by driving the running application, where the
+    // interrupt did nothing while every cmd.exe test passed.
+    let spike = Spike::start_under("powershell.exe");
+    spike.start_a_long_command();
+
+    let at = Instant::now();
+    unsafe { raise_interrupt(spike.pid) }.expect("the sequence completes");
+
+    // No typed marker here. PSReadLine auto-closes brackets and quotes as characters
+    // arrive, so anything with `(` or `"` comes out unbalanced and leaves the shell in `>>`
+    // continuation — which looks exactly like a failed interrupt and is not one. What the
+    // command produces is a cleaner witness than anything typed back at it.
+    let replies = |s: &str| s.matches("bytes=32").count();
+    let settled = spike.text();
+    std::thread::sleep(Duration::from_secs(3));
+    let later = spike.text();
+
+    println!(
+        "powershell: interrupt at {:?}; replies {} → {} after a further 3s",
+        at.elapsed(),
+        replies(&settled),
+        replies(&later)
+    );
+    assert_eq!(
+        replies(&settled),
+        replies(&later),
+        "the command must stop producing output once interrupted; got:\n{later}"
+    );
+    assert!(
+        replies(&later) < 10,
+        "`ping -n 25` must be cut short rather than run to completion — saw {} replies",
+        replies(&later)
+    );
+}
+
+#[test]
 fn spike_the_session_survives_being_interrupted() {
     // The other half of the spec scenario: interrupting stops the command, not the session.
     let spike = Spike::start();
@@ -512,6 +555,65 @@ fn spike_raising_the_event_a_hundred_times_does_not_kill_this_process() {
             .is_some(),
         "the session survives a hundred interrupts too; got:\n{}",
         spike.text()
+    );
+}
+
+#[test]
+fn the_sequence_works_from_a_process_with_no_console_of_its_own() {
+    // The shipped application is windowed: it has no console, so `restore` takes the
+    // branch that does *not* re-attach, and `GetConsoleWindow` is null throughout. Every
+    // other test here runs under `cargo test`, which has a console — the opposite branch.
+    // Without this, the path that actually ships would be the only untested one.
+    // PowerShell, because that is the shell the application configures — and `cmd.exe`
+    // passing told us nothing about it.
+    let spike = Spike::start_under("powershell.exe");
+    spike.start_a_long_command();
+
+    // Become console-less the way a windowed process is born.
+    unsafe {
+        let _guard = console_lock();
+        FreeConsole();
+        assert!(
+            GetConsoleWindow().is_null(),
+            "this test is meaningless unless the process really has no console"
+        );
+    }
+
+    // The *production* sequence, not this file's copy of it. Driving the running
+    // application showed the two are not interchangeable: `console_ctrl` is what ships, and
+    // no-console is the condition it ships under.
+    let outcome =
+        steward_ide_lib::adapters::console_ctrl::interrupt(spike.pid).map_err(|e| e.to_string());
+
+    // Put the harness back before asserting, so a failure here does not silently break
+    // every test that runs afterwards.
+    unsafe {
+        let _guard = console_lock();
+        AttachConsole(ATTACH_PARENT_PROCESS);
+    }
+
+    outcome.expect("the sequence completes with no console to return to");
+
+    // Marker-free: PSReadLine auto-closes brackets and quotes, so anything typed back at
+    // the shell arrives mangled. What the command produces is the honest witness.
+    let replies = |s: &str| s.matches("bytes=32").count();
+    let settled = spike.text();
+    std::thread::sleep(Duration::from_secs(3));
+    let later = spike.text();
+    println!(
+        "no-console: replies {} → {} after a further 3s",
+        replies(&settled),
+        replies(&later)
+    );
+    assert_eq!(
+        replies(&settled),
+        replies(&later),
+        "the interrupt must work from a windowed process too; got:\n{later}"
+    );
+    assert!(
+        replies(&later) < 10,
+        "the command must be cut short — saw {} replies",
+        replies(&later)
     );
 }
 
