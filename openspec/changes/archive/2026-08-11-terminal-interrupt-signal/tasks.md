@@ -58,4 +58,4 @@
 - [x] 9.1 Reviewed the diff and split it into seven Conventional Commits by intent on branch `change/terminal-interrupt-signal` (Rule 3). **The reversal is not yet committed** — see the working tree
 - [x] 9.2 **Published and verified** — the same release as `terminal-surface` 6.3/6.4 (metadata v7), since the rebuilt pack is what that release ships. It was never urgent for correctness: Not urgent for correctness: the old surface sends an argument the new command does not take, and Tauri ignores unknown arguments, so an installed application keeps working either way
 - [x] 9.3 **Synced, after `terminal-surface` and onto its base.** The interrupt requirement and its seven scenarios were added to `terminal-session`, the surface's route-exactly-once paragraph and two scenarios to `terminal-surface`, and `an interrupt` joined the operations an unknown identifier refuses. `openspec validate --specs` passes
-- [ ] 9.4 Run `/opsx:archive` to close the change
+- [x] 9.4 Archived to `openspec/changes/archive/2026-08-11-terminal-interrupt-signal/`, after `terminal-surface` — the change it corrects — was archived
