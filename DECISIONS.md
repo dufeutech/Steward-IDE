@@ -33,7 +33,7 @@ Concrete tool names live here only — `.canon/` and `openspec/specs/` stay abst
 - `binary-release-pipeline` (archived 2026-08-11) — 8 ADRs, one of them the only
   **Build**: release orchestration and bundling `tauri-apps/tauri-action@v1` (major pin, house
   convention; `cargo-dist` re-checked and still rejected — it ships plain Rust binaries, not
-  Tauri bundles), version single-source `app/src-tauri/Cargo.toml` by *deleting* the literal
+  Tauri bundles), version single-source `app/src-tauri/Cargo.toml` by _deleting_ the literal
   from `tauri.conf.json` — which inverts Tauri's own recommendation, deliberately and with the
   documented fallback re-verified; distribution GitHub Releases on the source repo, **not** TUF
   — narrowing, not contradicting, the `asset-pack-system` endpoint ADR, which rejected Releases
@@ -41,7 +41,8 @@ Concrete tool names live here only — `.canon/` and `openspec/specs/` stay abst
   subcommand** (conftest/OPA considered and dropped — it fits the endpoint half, not the
   anchor-identity half); provenance `actions/attest-build-provenance@v3`, matching
   `publish-pack.yml` rather than the current `v4`, with the repo-wide bump left as its own
-  change; platforms Windows + Linux with macOS excluded because it has never run; self-update
+  change — **since carried out; see "Provenance attestation version" below**; platforms
+  Windows + Linux with macOS excluded because it has never run; self-update
   still off; unsigned with the OS warning stated to users rather than discovered by them:
   [openspec/changes/archive/2026-08-11-binary-release-pipeline/design.md](openspec/changes/archive/2026-08-11-binary-release-pipeline/design.md)
 - `bootstrap-pack-boot` (archived) — 2 ADRs (embedded-size budget enforcement hand-written,
@@ -161,3 +162,27 @@ Concrete tool names live here only — `.canon/` and `openspec/specs/` stay abst
   `conpty` (Windows-only, unreleased since 2024-09).
 - **Isolation**: unchanged — `adapters/pty.rs` and `adapters/console_ctrl.rs`. No
   `portable_pty` type reaches the core.
+
+### Decision: Provenance attestation version — stay on the wrapper, bump both workflows to `@v4`
+
+- **Status**: approved (2026-08-11, carrying out the follow-up `binary-release-pipeline` D5
+  deferred)
+- **What moved**: `actions/attest-build-provenance@v3` → `@v4` in both call sites —
+  `release.yml` (installers) and `publish-pack.yml` (signed TUF metadata). They move together
+  so the repository keeps holding one answer for attestation, which was D5's reason for
+  pinning `@v3` in the first place.
+- **Why it is safe**: verified against the published action definitions rather than release
+  notes alone. `v4.0.0` is a repackage — its only change is "Prepare v4 release" — and the
+  `subject-path` input is identical across v3 and v4. Both call sites pass `subject-path` and
+  nothing else, so no input is added, removed or renamed. Latest is `v4.2.2` (2026-08-06);
+  the pin stays at the major, per house convention.
+- **Considered — moving both to `actions/attest`**: rejected. From v4,
+  `attest-build-provenance` is a thin wrapper over `actions/attest`, and GitHub's own release
+  note steers only _new_ implementations to the generic action while stating existing ones may
+  continue on the wrapper. `actions/attest` with no predicate inputs does produce build
+  provenance, so it would also have been drop-in — but it is the general tool configured to do
+  the specific job, where the wrapper _is_ the specific job. Adopting the narrower, documented
+  path costs nothing and says what it means.
+- **Unverified**: not yet exercised in CI. `publish-pack.yml` is `workflow_dispatch`-only and
+  `release.yml` triggers on a version tag, so neither runs on a push to `main`. The next pack
+  publish and the next release are what confirm it.

@@ -148,7 +148,7 @@ jobs:
             ${{ steps.state.outputs.metadata_url && format('--metadata-url {0}', steps.state.outputs.metadata_url) || '' }}
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: signed/metadata/*.json
 

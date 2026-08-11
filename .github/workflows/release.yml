@@ -190,7 +190,7 @@ jobs:
       # is what lets a recipient establish origin without an unsigned artifact having
       # to vouch for itself.
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: ${{ steps.bundles.outputs.paths }}
 
