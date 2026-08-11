@@ -273,6 +273,28 @@ fn terminal_resize(
         .map_err(reason)
 }
 
+/// Interrupt what a session is running, leaving the session alive (spec `terminal-session`).
+///
+/// `full_screen` is what the surface can see and the backend cannot: whether a program has
+/// taken the alternate screen buffer, and with it the keyboard. It decides delivery, not the
+/// surface (design D3).
+#[tauri::command]
+fn terminal_interrupt(
+    sessions: State<Sessions>,
+    session: u64,
+    full_screen: bool,
+) -> Result<(), String> {
+    sessions
+        .0
+        .lock()
+        .expect("poisoned")
+        .interrupt(
+            core::terminal::SessionId::new(session),
+            adapters::terminal_ipc::presenting(full_screen),
+        )
+        .map_err(reason)
+}
+
 /// End a session and release what it holds.
 #[tauri::command]
 fn terminal_close(sessions: State<Sessions>, session: u64) -> Result<(), String> {
@@ -366,6 +388,7 @@ pub fn run() {
             terminal_open,
             terminal_write,
             terminal_resize,
+            terminal_interrupt,
             terminal_close,
             terminal_config
         ])

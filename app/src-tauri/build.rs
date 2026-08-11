@@ -15,6 +15,7 @@ fn main() {
             "terminal_open",
             "terminal_write",
             "terminal_resize",
+            "terminal_interrupt",
             "terminal_close",
             "terminal_config",
         ]),

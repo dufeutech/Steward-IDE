@@ -8,7 +8,7 @@
 use tauri::ipc::{Channel, InvokeBody, InvokeResponseBody, Request};
 
 use crate::core::terminal::{
-    resolve_shell, SessionError, SessionId, ShellConfig, Size, TerminalConfig,
+    resolve_shell, Presenting, SessionError, SessionId, ShellConfig, Size, TerminalConfig,
 };
 
 /// Header carrying the session a raw-bodied write is addressed to.
@@ -91,6 +91,19 @@ pub fn requested_size(columns: i64, rows: i64) -> Result<Size, SessionError> {
     Size::new(columns, rows).map_err(SessionError::from)
 }
 
+/// What the surface reports about the program it is presenting (design D3).
+///
+/// A boolean on the wire, a named thing in the core: the webview cannot be asked to know
+/// what an alternate screen buffer implies for signal delivery, and the core must not be
+/// reading booleans whose meaning lives in a comment.
+pub fn presenting(full_screen: bool) -> Presenting {
+    if full_screen {
+        Presenting::FullScreen
+    } else {
+        Presenting::Normally
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,6 +157,14 @@ mod tests {
             chosen.to_ascii_lowercase().contains("cmd"),
             "the configured Windows candidate wins over an inherited $SHELL, got {chosen}"
         );
+    }
+
+    #[test]
+    fn the_surfaces_observation_keeps_its_meaning_across_the_wire() {
+        // Getting this the wrong way round would raise a control event at exactly the
+        // full-screen programs that must never receive one.
+        assert_eq!(presenting(true), Presenting::FullScreen);
+        assert_eq!(presenting(false), Presenting::Normally);
     }
 
     #[test]
