@@ -57,5 +57,5 @@
 
 - [x] 9.1 Reviewed the diff and split it into seven Conventional Commits by intent on branch `change/terminal-interrupt-signal` (Rule 3). **The reversal is not yet committed** — see the working tree
 - [ ] 9.2 Publish the rebuilt terminal pack as a signed release, per `docs/runbooks/pack-publishing.md`, and verify the published tree from a clean profile. Not urgent for correctness: the old surface sends an argument the new command does not take, and Tauri ignores unknown arguments, so an installed application keeps working either way
-- [ ] 9.3 Run `/opsx:sync` to fold the delta specs into the main specs — after `terminal-surface` has synced, never before (its specs are the base these deltas apply to)
+- [x] 9.3 **Synced, after `terminal-surface` and onto its base.** The interrupt requirement and its seven scenarios were added to `terminal-session`, the surface's route-exactly-once paragraph and two scenarios to `terminal-surface`, and `an interrupt` joined the operations an unknown identifier refuses. `openspec validate --specs` passes
 - [ ] 9.4 Run `/opsx:archive` to close the change

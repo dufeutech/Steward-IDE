@@ -75,5 +75,5 @@
 ## 9. Close out
 
 - [x] 9.1 Reviewed the diff and split it into six Conventional Commits by intent on branch `change/terminal-surface` (Rule 3). No attribution trailers — Rule 3 forbids them, overriding the harness default
-- [ ] 9.2 Run `/opsx:sync` to fold the delta specs into the main specs
+- [x] 9.2 **Synced.** Both delta specs were pure `ADDED` and the main specs named neither capability, so the sync created `openspec/specs/terminal-session/spec.md` and `openspec/specs/terminal-surface/spec.md` whole. `openspec validate --specs` passes on all ten
 - [ ] 9.3 Run `/opsx:archive` to close the change
