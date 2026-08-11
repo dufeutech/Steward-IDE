@@ -116,6 +116,13 @@ space opens the system menu and the next letter picks **Close**.
 `close` is deliberately not a kill: the app's own shutdown is what terminates live terminal
 sessions, so killing it would skip the very thing worth checking.
 
+> **A leftover app holds the binary, and the build is what appears to fail.** Killing an
+> agent's background command kills the waiter, not the app that command launched. The
+> survivor keeps a handle on `target/debug/steward-ide.exe`, so the next `cargo build` or
+> `cargo test` dies with `failed to remove file … Access is denied. (os error 5)` — a lock,
+> not a compile error, and not the Smart App Control `os error 4551` this machine also hits.
+> `Get-Process steward-ide` confirms it in a second; `uv run appdrive close` clears it.
+
 > **`cargo test` under an agent harness fails `terminal_interrupt_windows`, and it is right to.**
 > That suite's control case asserts what an _ordinary_ process sees, and a coding-agent tool
 > harness starts commands the way a development runner does — with `CREATE_NEW_PROCESS_GROUP`.
