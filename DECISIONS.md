@@ -17,19 +17,19 @@ Concrete tool names live here only — `.canon/` and `openspec/specs/` stay abst
   attestations are available at all, online-key custody Actions secrets, root/online key
   separation — supersedes the single-key D4 posture above):
   [openspec/changes/archive/2026-08-06-pack-publisher-pipeline/design.md](openspec/changes/archive/2026-08-06-pack-publisher-pipeline/design.md)
-- `terminal-surface` (active) — 4 ADRs (PTY control `portable-pty`, terminal emulation
+- `terminal-surface` (archived 2026-08-11) — 4 ADRs (PTY control `portable-pty`, terminal emulation
   `@xterm/xterm` — overriding the `term.js` named in the request, byte transport Tauri's
   `Channel` + raw invoke body, execution boundary TUF + `AppManifest::commands` capability
   gating + a composition check):
-  [openspec/changes/terminal-surface/design.md](openspec/changes/terminal-surface/design.md)
-- `terminal-interrupt-signal` (active) — 3 ADRs, **two of them reversed by measurement on
+  [openspec/changes/archive/2026-08-11-terminal-surface/design.md](openspec/changes/archive/2026-08-11-terminal-surface/design.md)
+- `terminal-interrupt-signal` (archived 2026-08-11) — 3 ADRs, **two of them reversed by measurement on
   2026-08-10** (delivering the interrupt: adopt the platform mechanism and write the byte,
   after Build/in-process and Build/in-a-helper were each built and refuted; Windows binding
   `windows-sys`, unchanged; scoping: adopt the pseudoconsole's own scope, replacing console
   attachment with process group `0`). The reversal's cause — an inherited
   `CREATE_NEW_PROCESS_GROUP` "ignore Ctrl+C" attribute, cleared by the one call `node-pty`
   makes and `portable-pty` omits — is design D2:
-  [openspec/changes/terminal-interrupt-signal/design.md](openspec/changes/terminal-interrupt-signal/design.md)
+  [openspec/changes/archive/2026-08-11-terminal-interrupt-signal/design.md](openspec/changes/archive/2026-08-11-terminal-interrupt-signal/design.md)
 - `bootstrap-pack-boot` (archived) — 2 ADRs (embedded-size budget enforcement hand-written,
   development materialization by extending packpub's assemble stage over `file://`):
   [openspec/changes/archive/2026-08-05-bootstrap-pack-boot/design.md](openspec/changes/archive/2026-08-05-bootstrap-pack-boot/design.md)
@@ -122,3 +122,28 @@ Concrete tool names live here only — `.canon/` and `openspec/specs/` stay abst
   references a path that isn't there); a shared `lab` package with pooled dependencies (one
   experiment's dependency becomes everyone's).
 - **Isolation**: `scripts/py/lab/`, listed under `exclude` in the workspace root.
+
+### Decision: PTY control — re-affirm `portable-pty`, and keep the one-line Windows correction
+
+- **Status**: approved (2026-08-11 re-check of the `terminal-surface` D5 adoption)
+- **Why re-checked**: before proposing the missing `SetConsoleCtrlHandler(NULL, FALSE)` call
+  upstream, the premise was worth testing — that the gap is real in 2026 and not something a
+  more current crate already solves.
+- **What the survey found**: it is real, and **no Rust crate solves it**. The call appears in
+  neither `portable-pty` 0.9.0 (the pinned version and still the newest, 2025-02-11, 4.7M
+  recent downloads) nor upstream `main`, and in none of the alternatives — `winpty-rs` 1.0.6,
+  `conpty` 0.7.0, `pseudoterminal` 0.2.1, or the `portable-pty-psmux` fork. The only
+  implementation that makes it is `node-pty` (`src/win/conpty.cc`, latest 1.1.0, 2025-12-22),
+  which is not adoptable from Rust. Switching crates would therefore not remove our
+  correction — it would only cost us the most-adopted one.
+- **Maintenance**: healthy but slow to release. `pty/` last changed 2026-06-07
+  ("pty: windows: fix kill()"), repository active, 28k stars — yet no release since
+  2025-02-11. A fix accepted upstream would not reach a released crate soon, so the
+  correction stays regardless of what upstream does with it.
+- **Considered and rejected**: `portable-pty-psmux` (a fork that exists precisely because
+  upstream omits modern ConPTY creation flags — evidence the gap class is real, but 1.5k
+  recent downloads against 4.7M is a worse bus factor for the same missing call);
+  `winpty-rs` (WinPTY/ConPTY abstraction, Windows-only — we need one cross-platform trait);
+  `conpty` (Windows-only, unreleased since 2024-09).
+- **Isolation**: unchanged — `adapters/pty.rs` and `adapters/console_ctrl.rs`. No
+  `portable_pty` type reaches the core.

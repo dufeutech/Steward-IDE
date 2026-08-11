@@ -220,5 +220,5 @@ flowchart TB
 - [`asset-pack-system.md`](asset-pack-system.md) — how the surface is delivered and verified.
 - [`DEV.md`](../../DEV.md) — running the app.
 - [`docs/runbooks/pack-publishing.md`](../runbooks/pack-publishing.md) — publishing a pack.
-- The change's [`design.md`](../../openspec/changes/terminal-surface/design.md) — the ADRs
-  and the measurements behind them.
+- The change's [`design.md`](../../openspec/changes/archive/2026-08-11-terminal-surface/design.md) —
+  the ADRs and the measurements behind them.
