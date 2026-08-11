@@ -11,16 +11,32 @@ permissions:
   contents: read
 
 jobs:
+  # The matrix IS the statement of which platforms are covered — one visible list, so
+  # an uncovered platform is legible as uncovered rather than inferred from absence
+  # (change macos-ci-verification, spec platform-verification).
   rust:
-    name: rust (fmt, clippy, test, build)
-    runs-on: ubuntu-latest
+    name: rust (${{ matrix.platform }})
+    strategy:
+      # Deliberately ON here, where release.yml turns it off. That workflow stops early
+      # because a draft holding half its assets is what publication would otherwise
+      # release. Nothing is published from this workflow, so there is nothing to keep
+      # consistent by cancelling — and a cancelled leg is a platform reported as neither
+      # passing nor failing, which is the one outcome the coverage spec has no room for.
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.platform }}
     defaults:
       run:
         working-directory: app/src-tauri
     steps:
       - uses: actions/checkout@v5
 
+      # Linux only, and macOS deliberately has no equivalent: WebKit is part of the OS
+      # there, so there is nothing to install. The absence of a macOS branch here is the
+      # design and not an oversight (change macos-ci-verification, design D2).
       - name: Install Tauri system dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
@@ -29,15 +45,29 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      # No explicit platform key: the automatic key already includes the rustc host
+      # triple, so the two legs cannot collide. release.yml's Windows/Linux matrix has
+      # relied on this since the first release.
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: app/src-tauri
 
-      - run: cargo fmt --check
-      - run: cargo clippy -- -D warnings
+      # Linux only. These analyse source, not platform behaviour, so a second runner
+      # would spend minutes reaching an identical verdict. macOS coverage is therefore
+      # build and test only — narrower than Linux's, and .canon/checks.md says so rather
+      # than letting a green tick imply otherwise.
+      - if: runner.os == 'Linux'
+        run: cargo fmt --check
+      - if: runner.os == 'Linux'
+        run: cargo clippy -- -D warnings
 
       # Includes the TUF end-to-end tests: they read the committed fixture
       # repository over file:// URLs, so no secrets and no network are involved.
+      #
+      # On macOS this is the leg that earns its runner. Two sites newly execute:
+      # terminal_pty's Unix arms, against BSD openpty rather than Linux's, and
+      # terminal_ipc's cfg(unix) shell selection on a second, different Unix.
+      # terminal_interrupt_windows is #![cfg(windows)] and is absent here entirely.
       - run: cargo test
       - run: cargo build
 
