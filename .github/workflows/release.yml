@@ -145,6 +145,21 @@ jobs:
             libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
             file wget xdg-utils libxdo-dev libssl-dev
 
+      # The action drives the bundler through `npm run tauri build`, so the CLI has
+      # to be on disk first — without this it fails with `tauri: not found` and exit
+      # 127, which is how the first probe run of this workflow actually failed.
+      # `npm ci` rather than `install`: app/package-lock.json is committed, and a
+      # release must build from what is pinned.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install the Tauri CLI
+        working-directory: ${{ env.PROJECT_PATH }}
+        run: npm ci
+
       # The bundler decides the artifact set from `tauri.conf.json`'s explicit
       # targets, and takes the version from the crate — neither is passed here,
       # because a value passed in is a value that can disagree (design D2).
