@@ -11,7 +11,8 @@ by hand once.
 Three facts constrain everything below.
 
 **The binary is the only thing that cannot be corrected after publication.** The TUF trust
-anchor (`app/src-tauri/tuf/root.json`) and the content endpoints (`config/app.config.json`)
+anchor (`app/src-tauri/tuf/root.json`) and the content endpoints
+(`app/src-tauri/config/app.config.json`)
 are compiled in, and both are *tracked files that get edited during local-endpoint testing*.
 A binary published with a development anchor trusts throwaway keys and rejects real content,
 and the only repair is another binary. Everything else in this design is ordinary automation;
@@ -58,11 +59,11 @@ Current CI is `ubuntu-latest` only, with no matrix, and has never bundled the ap
 
 ### D1. Release orchestration and bundling — Adopt
 
-**Decision:** Adopt the Tauri project's own GitHub Action for building and publishing the
-bundles, driven by a tag push, running a two-entry OS matrix. Adopt GitHub Actions itself as
-the orchestrator, which the project already runs on.
+**Decision:** Adopt the Tauri project's own GitHub Action — `tauri-apps/tauri-action@v1` — for
+building and publishing the bundles, driven by a tag push, running a two-entry OS matrix.
+Adopt GitHub Actions itself as the orchestrator, which the project already runs on.
 
-**Status:** Accepted.
+**Status:** Approved (`/ai:decide`, 2026-08-11).
 
 **Why:** The bundling problem — compile per platform, produce each platform's native
 installer formats, attach them to a release — is exactly and only what this action does, and
@@ -71,11 +72,24 @@ hand-writing per-OS bundle invocations and artifact upload for two platforms and
 that against Tauri's bundler changes. This is the repository's canonical example of a rule
 already violated once: a line-counter was written from scratch when mature tools existed.
 
+**Verified at the gate, not recalled:** the action is actively maintained — last push
+2026-08-10, 1597 stars, MIT. `v1.0.0` (2026-06-29) is the current line and its breaking change
+was *dropping* Tauri v1 and pre-stable v2, so it targets exactly the stable Tauri v2 this
+project depends on. The `v1` tag exists, which is what the pin resolves against.
+
+**Pin:** major version `@v1`, matching the house convention every other action here follows
+(`actions/checkout@v5`, `astral-sh/setup-uv@v7`). An exact-version or commit-SHA pin was
+considered and dropped: it is a stronger supply-chain posture, but adopting it for one action
+while five others stay on major pins buys inconsistency rather than safety. If SHA pinning is
+ever wanted it should be a repository-wide decision, not a detail of this workflow.
+
 **Considered:** hand-written matrix invoking `tauri build` plus manual upload (rejected —
-rebuilds the adopted thing); `cargo-dist` (rejected — excellent for plain Rust binaries, but
-it does not drive Tauri's bundler, so it would produce the wrong artifacts); a release-manager
-tool such as `release-plz` or `knope` (rejected — solves version bumping and changelogs, which
-are explicit non-goals, and still would not bundle).
+rebuilds the adopted thing); `cargo-dist` (rejected — re-checked at the gate and still alive,
+2096 stars, last push 2026-07-28, so the rejection is not staleness: its documentation contains
+no mention of Tauri, MSI, NSIS or AppImage, because it ships plain Rust binaries with its own
+installers, which are the wrong artifacts); a release-manager tool such as `release-plz` or
+`knope` (rejected — solves version bumping and changelogs, which are explicit non-goals, and
+still would not bundle).
 
 **Isolation:** The workflow is an adapter. It invokes the same commands a developer runs
 locally and contains no logic of its own beyond the gate in D4.
@@ -86,7 +100,10 @@ locally and contains no logic of its own beyond the gate in D4.
 **removed** from `tauri.conf.json`, which makes the bundler fall back to the crate version.
 `app/package.json` declares no version.
 
-**Status:** Accepted.
+**Status:** Approved (`/ai:decide`, 2026-08-11 — the fallback was re-read from the current
+Tauri v2 configuration reference at the gate, which states of the `version` field: *"If removed
+the version number from `Cargo.toml` is used."* The premise holds and the inversion below is
+taken knowingly).
 
 **Why:** This is a configuration capability the toolchain already has, so the fix is deleting
 two declarations rather than adding a tool to synchronize three. `app/package.json` is private
@@ -114,7 +131,7 @@ application through the existing build-time mechanism.
 **Decision:** Installers are published as GitHub Release assets on the (public) source
 repository. The packs repository and its TUF metadata are untouched.
 
-**Status:** Accepted.
+**Status:** Approved (`/ai:decide`, 2026-08-11).
 
 **Why:** The earlier ADR that rejected GitHub Releases for *packs* rejected it for one
 specific reason — Releases' flat asset namespace cannot serve the nested target paths a TUF
@@ -140,19 +157,32 @@ production URL. It runs as the first step of the release job, before anything is
 and is also a row in `.canon/checks.md`. It is implemented by extending the existing `packpub`
 tool rather than as a new one.
 
-**Status:** Accepted. This is the one *Build* in this change and it is the deliberate kind:
-the property is specific to this repository's own files and no external tool knows what this
-project's production anchor is.
+**Status:** Approved (`/ai:decide`, 2026-08-11). This is the one *Build* in this change and it
+is the deliberate kind: the property is specific to this repository's own files and no external
+tool knows what this project's production anchor is.
 
 **Why:** This is the only irreversible failure in the whole design. `DEV.md` and the
 publishing runbook both already warn that these tracked files get edited during local-endpoint
 testing; the existing safeguard is that a human remembers. `packpub check-anchor` is adjacent
-but answers a different question — key separation, thresholds and expiry — not "is this the
-production anchor."
+but answers a different question — verified at the gate by reading it: it reports version,
+expiry, key count, signature count and role thresholds, i.e. *signing posture*, never *identity*.
+A development anchor with two keys and a healthy expiry passes it.
 
-**Considered:** relying on `check-anchor` (rejected — different question); a pre-commit hook
-(rejected — a hook does not protect a release, and can be bypassed); making the dev anchor
-untracked (rejected as insufficient alone, but see Risks — worth doing anyway).
+**Considered:** relying on `check-anchor` (rejected — different question, as above); **a policy
+engine such as conftest/OPA** (the strongest adopt-candidate, surfaced at the gate and not in
+the original draft — it is purpose-built for "given this structured data, is it allowed?" and
+runs identically in CI and by hand; rejected because it buys the easy half and not the hard one.
+The endpoint check is genuinely Rego-shaped, but the anchor check is a file-identity question
+whose expected value is our own production root — that has to be written down by us in either
+tool. Adopting it means a second binary in the `ensure` list and a language nobody here writes,
+to express two comparisons, while `packpub` already ships, installs and unit-tests); a
+pre-commit hook (rejected — a hook does not protect a release, and can be bypassed); making the
+dev anchor untracked (rejected as insufficient alone, but see Risks — worth doing anyway).
+
+**Note on tier:** the capability is hand-written, so this is `Build`; the *vehicle* is `Extend`
+— a new subcommand on the existing `packpub` (Python, cyclopts, pure `core/` behind `adapters/`),
+not a new tool. Both halves of the check land in one place that `.canon/checks.md` can already
+invoke.
 
 **Isolation:** A pure comparison over file contents, in the tool layer, invoked by the
 workflow.
@@ -160,13 +190,21 @@ workflow.
 ### D5. Provenance — Adopt what the project already uses
 
 **Decision:** Attest each published installer with GitHub's build-provenance attestation, the
-same mechanism `publish-pack.yml` already applies to signed TUF metadata.
+same mechanism `publish-pack.yml` already applies to signed TUF metadata. Pinned to
+`actions/attest-build-provenance@v3` — the version already in the tree.
 
-**Status:** Accepted.
+**Status:** Approved (`/ai:decide`, 2026-08-11).
 
 **Why:** Already in use, already understood here, requires no key custody, and is verifiable
 by a third party with a public tool. Adding a signing key would add custody burden to a
 project that already has one outstanding key-custody problem.
+
+**On the pin:** the current major is `v4.2.2` (2026-08-06), and from v4 the action is a thin
+wrapper over `actions/attest`, which GitHub now points new implementations at. This change
+still pins `@v3`, deliberately, under Rule 7: `publish-pack.yml:151` is on `@v3`, and the
+repository should hold one answer for attestation rather than two. Bumping both workflows to
+`v4` — or moving both to `actions/attest` — is a real follow-up, and it belongs in its own
+change because it touches a working pack-publishing path this change otherwise leaves alone.
 
 **Considered:** detached signatures with a project key (rejected — new key, new custody, and
 the root key custody question is still open); checksums alone (rejected — proves integrity
@@ -178,7 +216,9 @@ against accidental corruption, not origin).
 `bundle.targets` changes from `"all"` to an explicit list, so the artifact set is stated
 rather than whatever the runner happened to be able to produce.
 
-**Status:** Accepted.
+**Status:** Approved (`/ai:decide`, 2026-08-11 — the current Tauri v2 configuration reference
+confirms `bundle.targets` accepts exactly this list: `["deb", "rpm", "appimage", "nsis", "msi",
+"app", "dmg"]` or `"all"`, so the four named targets are spellable as written).
 
 **Why:** Windows is proven end-to-end. Linux became defensible in this same session: the
 terminal path — the last platform-specific thing in the application — now executes and is
@@ -195,7 +235,8 @@ installer nobody has launched is a claim the project cannot support.
 **Decision:** The updater plugin is not enabled. Recorded here because a release pipeline is
 exactly where someone would reach for it.
 
-**Status:** Accepted (re-affirmation of the `asset-pack-system` decision).
+**Status:** Approved (`/ai:decide`, 2026-08-11 — re-affirmation of the `asset-pack-system`
+decision, not a fresh one).
 
 **Why:** Enabling it introduces a fourth signing key and a second trust root into a system
 that centralized on one on purpose. The architecture's whole premise is that *content*
@@ -208,7 +249,7 @@ itself.
 both operating systems will warn, and point at the provenance attestation as the way to
 confirm origin.
 
-**Status:** Accepted, with a recorded follow-up.
+**Status:** Approved (`/ai:decide`, 2026-08-11), with a recorded follow-up.
 
 **Why:** Certificates cost money and, for Windows, an OV certificate earns reputation only
 gradually while an EV one requires hardware custody. That is a purchasing decision, not an

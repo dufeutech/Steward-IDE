@@ -30,6 +30,20 @@ Concrete tool names live here only — `.canon/` and `openspec/specs/` stay abst
   `CREATE_NEW_PROCESS_GROUP` "ignore Ctrl+C" attribute, cleared by the one call `node-pty`
   makes and `portable-pty` omits — is design D2:
   [openspec/changes/archive/2026-08-11-terminal-interrupt-signal/design.md](openspec/changes/archive/2026-08-11-terminal-interrupt-signal/design.md)
+- `binary-release-pipeline` (active, gate run 2026-08-11) — 8 ADRs, one of them the only
+  **Build**: release orchestration and bundling `tauri-apps/tauri-action@v1` (major pin, house
+  convention; `cargo-dist` re-checked and still rejected — it ships plain Rust binaries, not
+  Tauri bundles), version single-source `app/src-tauri/Cargo.toml` by *deleting* the literal
+  from `tauri.conf.json` — which inverts Tauri's own recommendation, deliberately and with the
+  documented fallback re-verified; distribution GitHub Releases on the source repo, **not** TUF
+  — narrowing, not contradicting, the `asset-pack-system` endpoint ADR, which rejected Releases
+  only for nested TUF target paths; **the pre-publication trust gate hand-written as a `packpub`
+  subcommand** (conftest/OPA considered and dropped — it fits the endpoint half, not the
+  anchor-identity half); provenance `actions/attest-build-provenance@v3`, matching
+  `publish-pack.yml` rather than the current `v4`, with the repo-wide bump left as its own
+  change; platforms Windows + Linux with macOS excluded because it has never run; self-update
+  still off; unsigned with the OS warning stated to users rather than discovered by them:
+  [openspec/changes/binary-release-pipeline/design.md](openspec/changes/binary-release-pipeline/design.md)
 - `bootstrap-pack-boot` (archived) — 2 ADRs (embedded-size budget enforcement hand-written,
   development materialization by extending packpub's assemble stage over `file://`):
   [openspec/changes/archive/2026-08-05-bootstrap-pack-boot/design.md](openspec/changes/archive/2026-08-05-bootstrap-pack-boot/design.md)

@@ -2,11 +2,15 @@
 
 ## 0. Gate
 
-- [ ] 0.1 Run `/ai:decide` over the critical concerns in `proposal.md` and confirm D1–D8 in
+- [x] 0.1 Run `/ai:decide` over the critical concerns in `proposal.md` and confirm D1–D8 in
       `design.md`. D1 (adopt the upstream release action) and D4 (build the trust gate) are
       the two that must survive scrutiny — the first because rebuilding an adopted tool is
       this repository's recorded past mistake, the second because it is the only *Build* here.
-- [ ] 0.2 Record the surviving ADRs in `DECISIONS.md` with links back to `design.md`.
+      **Both survived** (2026-08-11). D1 gained an explicit `@v1` pin and a re-check that
+      `cargo-dist` is alive but still produces the wrong artifacts; D4 gained the adopt-candidate
+      the draft had missed — conftest/OPA — and the reason it loses. D5's pin was the one thing
+      that moved: `@v3` is now a major behind, held deliberately to match `publish-pack.yml`.
+- [x] 0.2 Record the surviving ADRs in `DECISIONS.md` with links back to `design.md`.
 
 ## 1. Single-source the version
 
