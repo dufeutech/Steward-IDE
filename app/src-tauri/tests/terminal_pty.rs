@@ -30,6 +30,11 @@ const LIMIT: Duration = Duration::from_secs(30);
 const CURSOR_QUERY: &[u8] = b"\x1b[6n";
 const CURSOR_ANSWER: &[u8] = b"\x1b[1;1R";
 
+/// The interrupt helper cargo built alongside this test (design D2a).
+fn interrupt_helper() -> std::path::PathBuf {
+    env!("CARGO_BIN_EXE_steward-interrupt").into()
+}
+
 fn a_shell() -> String {
     if cfg!(windows) {
         "cmd.exe".into()
@@ -53,7 +58,9 @@ impl Session {
 
         let collected = Arc::clone(&output);
         let answering = Arc::clone(&pty);
-        let started = NativePtySpawner::new(std::env::temp_dir())
+        // Cargo builds the helper for this test run and hands us its path, so these tests
+        // exercise the binary that ships rather than a copy of what it does.
+        let started = NativePtySpawner::new(std::env::temp_dir(), interrupt_helper())
             .spawn(SpawnRequest {
                 program: a_shell(),
                 size,

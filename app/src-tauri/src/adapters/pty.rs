@@ -41,11 +41,19 @@ pub struct NativePtySpawner {
     /// Where sessions start. A defined working directory is part of the session contract
     /// (spec `terminal-session`), so it is injected rather than inherited by accident.
     cwd: PathBuf,
+    /// The binary that raises a console control event on Windows (design D2a). Injected
+    /// for the same reason as `cwd`: the adapter is handed a decided value rather than
+    /// discovering one, which is also what lets a test point at its own build of it.
+    #[cfg_attr(unix, allow(dead_code))]
+    interrupt_helper: PathBuf,
 }
 
 impl NativePtySpawner {
-    pub fn new(cwd: PathBuf) -> Self {
-        Self { cwd }
+    pub fn new(cwd: PathBuf, interrupt_helper: PathBuf) -> Self {
+        Self {
+            cwd,
+            interrupt_helper,
+        }
     }
 }
 
@@ -142,6 +150,7 @@ impl PtySpawner for NativePtySpawner {
             writer: Some(Box::new(writer)),
             killer,
             shell_pid,
+            interrupt_helper: self.interrupt_helper.clone(),
             reader_thread: Some(reader_thread),
         }))
     }
@@ -178,6 +187,8 @@ struct NativePty {
     /// The shell's process identifier, where the platform has one. Windows raises the
     /// interrupt on the console this process owns; Unix never reads it.
     shell_pid: Option<u32>,
+    #[cfg_attr(unix, allow(dead_code))]
+    interrupt_helper: PathBuf,
     /// Taken on close so the thread is joined exactly once (spec: nothing outlives its
     /// session).
     reader_thread: Option<std::thread::JoinHandle<()>>,
@@ -256,7 +267,7 @@ impl NativePty {
                 let pid = self.shell_pid.ok_or_else(|| {
                     SessionError::Io("the shell has no process identifier to interrupt".into())
                 })?;
-                crate::adapters::console_ctrl::interrupt(pid)
+                crate::adapters::console_ctrl::interrupt(pid, &self.interrupt_helper)
             }
         }
     }
@@ -281,7 +292,7 @@ mod tests {
     fn a_missing_program_is_reported_not_panicked() {
         // Spec scenario "The shell cannot be started": a reason the surface can show,
         // with the application still usable.
-        let spawner = NativePtySpawner::new(std::env::temp_dir());
+        let spawner = NativePtySpawner::new(std::env::temp_dir(), "unused-here".into());
         let outcome = spawner.spawn(SpawnRequest {
             program: "steward-no-such-shell-exists".into(),
             size: Size::new(80, 24).unwrap(),

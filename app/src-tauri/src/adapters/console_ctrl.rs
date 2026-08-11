@@ -12,9 +12,14 @@
 //! change's design under D2, "What the spike changed". Do not reorder this without
 //! re-running it.
 
+use std::os::windows::process::CommandExt;
+use std::path::Path;
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
+
+use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
 use windows_sys::Win32::System::Console::{
     AttachConsole, FreeConsole, GenerateConsoleCtrlEvent, GetConsoleWindow, SetConsoleCtrlHandler,
@@ -42,27 +47,51 @@ fn console_lock() -> MutexGuard<'static, ()> {
     LOCK.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Interrupt everything running on `pid`'s console, leaving this process unharmed.
+/// The argument that turns the helper binary into an interrupt rather than an application.
+pub const HELPER_ARG: &str = "--steward-raise-interrupt";
+
+/// Interrupt everything running on `pid`'s console, by asking `helper` to do it.
 ///
-/// Runs the sequence on a thread of its own. Two reasons, one measured and one plain: the
-/// application's main thread is the one pumping the window message loop, and raising the
-/// event from it delivers nothing at all — the call reports success and no process on the
-/// console, including this one, ever sees it. The plain reason is that the sequence can
-/// block for [`DELIVERY_BOUND`], which has no business happening on the thread that draws.
-pub fn interrupt(pid: u32) -> Result<(), SessionError> {
-    std::thread::scope(|scope| {
-        scope
-            .spawn(|| interrupt_here(pid))
-            .join()
-            .unwrap_or_else(|_| {
-                Err(SessionError::Io(
-                    "the interrupt could not be carried out".into(),
-                ))
-            })
-    })
+/// **The application never attaches to a console itself, and that is the whole point**
+/// (design D2a). Raised from inside this process the event is delivered to nobody — not the
+/// shell, not even this process, whose handler is registered and fires when the identical
+/// sequence runs from a test binary. A helper is born clean: no console, no handler history,
+/// nothing to restore, and no way for a mistake here to take the application down with it.
+pub fn interrupt(pid: u32, helper: &Path) -> Result<(), SessionError> {
+    let status = Command::new(helper)
+        .arg(HELPER_ARG)
+        .arg(pid.to_string())
+        // Without this a console-subsystem build flashes a console window on every
+        // keypress. The helper needs no console of its own — it borrows the shell's.
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|e| {
+            SessionError::Io(format!(
+                "could not run {} to interrupt the session: {e}",
+                helper.display()
+            ))
+        })?;
+
+    match status.status.code() {
+        Some(0) => Ok(()),
+        // The helper says why on stderr; carrying it through is what keeps a failed
+        // interrupt diagnosable from the surface rather than a bare exit code.
+        Some(code) => Err(SessionError::Io(format!(
+            "the interrupt was not delivered (helper exited with {code}): {}",
+            String::from_utf8_lossy(&status.stderr).trim()
+        ))),
+        None => Err(SessionError::Io(
+            "the interrupt helper was terminated before it could report".into(),
+        )),
+    }
 }
 
-fn interrupt_here(pid: u32) -> Result<(), SessionError> {
+/// Raise the control event **in this process**, which must be the helper.
+///
+/// Called only from the helper binary. Everything it mutates — console attachment, the
+/// control-handler list — dies with the process moments later, which is why this is the
+/// only place the sequence is allowed to run.
+pub fn raise_here(pid: u32) -> Result<(), SessionError> {
     let _guard = console_lock();
     // SAFETY: every call below is FFI into the console API. The invariant the unsafe block
     // maintains is that this process leaves the function attached to whatever console it

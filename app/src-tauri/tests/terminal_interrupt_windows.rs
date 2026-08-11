@@ -582,8 +582,11 @@ fn the_sequence_works_from_a_process_with_no_console_of_its_own() {
     // The *production* sequence, not this file's copy of it. Driving the running
     // application showed the two are not interchangeable: `console_ctrl` is what ships, and
     // no-console is the condition it ships under.
-    let outcome =
-        steward_ide_lib::adapters::console_ctrl::interrupt(spike.pid).map_err(|e| e.to_string());
+    let outcome = steward_ide_lib::adapters::console_ctrl::interrupt(
+        spike.pid,
+        env!("CARGO_BIN_EXE_steward-interrupt").as_ref(),
+    )
+    .map_err(|e| e.to_string());
 
     // Put the harness back before asserting, so a failure here does not silently break
     // every test that runs afterwards.

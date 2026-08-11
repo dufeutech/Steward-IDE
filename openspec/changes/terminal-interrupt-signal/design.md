@@ -176,18 +176,49 @@ console membership, same return value. In the application the event reaches *nob
 not the shell, not `ping`, not even this process, whose handler is registered and fires
 in the test. `GenerateConsoleCtrlEvent` succeeds and the event evaporates.
 
-Two candidates are already refuted:
+Four candidates are refuted, and the last one moves the problem somewhere new:
 
 | Candidate | How it was tested | Result |
 | ----------- | ------------------- | -------- |
-| the application has no console of its own, unlike `cargo test` | `FreeConsole` first, then the production `console_ctrl::interrupt` against `powershell.exe` | refuted — `delivered_to_us=true`, command stops |
+| the application has no console of its own, unlike `cargo test` | `FreeConsole` first, then the production sequence against `powershell.exe` | refuted — `delivered_to_us=true`, command stops |
 | the sequence runs on the thread pumping the window message loop | moved onto a scoped thread of its own | refuted — identical trace, still `delivered_to_us=false` |
+| the application process is the problem, so raise from a helper | ADR 1's fallback, built and shipped as a bin target (below) | refuted — helper exits 0, `ping.exe` still alive before **and** after |
+| the way the application *spawns* the helper (`CREATE_NO_WINDOW`, inherited handles) | ran the helper **by hand from an ordinary shell**, against the pid of a shell belonging to the running application | refuted — exit 0, `ping.exe` still alive |
 
-The change is therefore **not shippable**: it is correct everywhere it can be tested
-automatically and wrong in the one place that matters. The pre-registered fallback in ADR 1
-— a helper executable that attaches and raises in a process of its own — now looks less
-like a costlier alternative and more like the answer, because the thing that differs is
-precisely the application process's own console state, and a helper has none of it.
+**Where that leaves it.** The last row eliminates the raising process entirely: the same
+helper binary, run from an ordinary shell with no involvement from the application, kills
+`ping` on a pseudoconsole created by `cargo test` and does not on one created by the
+application. The variable is therefore neither the sequence, nor the thread, nor the
+process that raises, nor how it is launched — it is **the pseudoconsole the application
+created**, or something about the process that created it.
+
+That is a much smaller haystack than this section started with, and it is where the next
+session should begin. Candidates not yet tested, in the order they look worth trying:
+
+1. **The application's PTY is created under different process state.** A job object, a
+   different desktop/station, or an integrity level would all travel to the pseudoconsole's
+   conhost and to every process on it. `cargo test` has none of these; a Tauri app may.
+2. **`NativePtySpawner` has never been exercised with `powershell.exe`.** Every passing
+   adapter test uses `cmd.exe`; every passing PowerShell test uses `portable_pty` directly.
+   The intersection — this project's spawner, this project's shell — is untested, and it is
+   exactly what the application runs.
+3. **Session creation happens on a different thread than the tests use**, so the
+   pseudoconsole is owned by a thread that later behaves differently.
+
+The change is therefore **not shippable in this form**, and the fallback recorded in ADR 1 is
+taken: **a helper process attaches and raises, and the application never touches a console
+at all.** The trigger stated there — "if the guards prove insufficient" — has fired, in the
+strongest possible way: it is not that the guards are unsafe, it is that the raise does
+nothing from inside this process. What differs between the two rows above is the process,
+so the answer is to stop using that process.
+
+This also settles what the in-process form was always trading away. ADR 1 chose it to avoid
+a second binary and a spawn per keypress; the second binary turns out to cost nothing (the
+helper is a bin target in the same crate, so there is one crate, one build, one signature)
+and a spawn costs a few milliseconds against a keypress the user is waiting on anyway.
+Against that, the in-process form mutates console attachment and handler registration in a
+long-lived windowed process — which is exactly the state that broke it. The helper has no
+such state to break: it is born, attaches to one console, raises, and exits.
 
 **Why not the alternatives:**
 
@@ -305,9 +336,22 @@ here; `specs/` and `openspec/config.yaml` stay abstract. Every candidate below w
 against its registry and repository on that date rather than recalled, and the platform
 behaviour was read from Microsoft's own reference rather than remembered.
 
-### Decision: Raising an operating-system control event — Build, in-process and guarded
+### Decision: Raising an operating-system control event — Build, in a helper process
 
-- **Status**: approved
+- **Status**: approved (superseded the in-process form on 2026-08-10, by measurement — see D2a)
+- **Superseded**: the first approved form ran the sequence inside the application process,
+  with the helper recorded as a fallback "if the guards below prove insufficient". The
+  trigger fired for a reason stronger than the guards: raised from the application, the
+  event is delivered to no process at all, while the identical sequence against the identical
+  shell works from a test process. The tier and the reasoning below are unchanged — it is
+  still **Build**, because there is still nothing to adopt — only *where the code runs* moved.
+- **Why the helper wins now**: the failure is a property of the long-lived windowed process,
+  so the fix is to not use it. A helper is born with no console, attaches to exactly one,
+  raises, and exits; there is no console state to restore, no handler registration to
+  outlive the call, and no way for a mistake to take the application down with it. The costs
+  ADR 1 originally weighed against it have shrunk on contact: the helper is a bin target in
+  the same crate, so it is one build and one signature, and a spawn is a few milliseconds
+  against a keypress.
 - **Why**: **Build**, and this is the rare case where the hierarchy runs out before Adopt.
   Nothing on crates.io exposes "raise a control event on another process's console": `ctrlc`
   (the obvious search hit) *receives* Ctrl+C, it does not send it; `signal-child` is Unix-only
