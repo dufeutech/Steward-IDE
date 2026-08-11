@@ -26,5 +26,33 @@ moment you first discover the real command, so the next session doesn't rediscov
 A row marked "not yet defined" is a real answer: that check is **unverified** and Rule 6 says
 to report it as such. It is not permission to skip it silently.
 
+## Platform coverage
+
+A check covers a platform only when it **executes** on it. Building the product for a platform
+establishes that the code compiles, not that its platform-conditional behaviour is correct, and
+does not count here.
+
+| Platform | Covered by                                                    | Where                                             |
+| -------- | ------------------------------------------------------------- | ------------------------------------------------- |
+| Linux    | every row above                                               | `checks.yml`, and the Unix verification container |
+| macOS    | **`cargo test` and `cargo build` only** — not fmt, not clippy | `checks.yml`, `macos-latest` leg                  |
+| Windows  | the Rust rows, by hand and in the release matrix              | developer machines; `release.yml`                 |
+
+macOS is narrower on purpose: `cargo fmt` and `cargo clippy` analyse source rather than
+platform behaviour, so a second runner would reach an identical verdict. The two sites that
+genuinely differ there do run — `terminal_pty` against BSD `openpty` rather than Linux's, and
+`terminal_ipc`'s `cfg(unix)` shell selection on a second Unix.
+
+**What macOS coverage does not establish.** No Gatekeeper, quarantine, notarization, signing or
+launch property is verified on any platform, and no macOS artifact is built, published or
+launched — macOS is covered by the checks and is **not** in the release platform set. The two
+sets are separate by design.
+
+A launch check here would be worse than none. Gatekeeper's verdict depends on the
+`com.apple.quarantine` attribute, which is set by the downloading application; command-line
+fetches do not set it. A CI job that downloaded an artifact and launched it would pass _because
+it is CI_ and report a result no user experiences. If that check is ever written, it must set
+the attribute itself rather than inherit its absence.
+
 If a project defines these somewhere canonical already — `package.json` scripts, a `Makefile`,
 `justfile`, `Cargo.toml` — point at that instead of copying the commands here. One home.
