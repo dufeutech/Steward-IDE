@@ -194,6 +194,19 @@ unsafe fn restore_default_ctrl_c_handling() {
 
 #[test]
 fn the_byte_interrupts_a_running_command_in_an_ordinary_process() {
+    // Establish the premise instead of inheriting it. "Ordinary" means this process is not
+    // ignoring Ctrl+C — and whether it is depends on the *launcher*, not on the code under
+    // test: a runner that spawns with `CREATE_NEW_PROCESS_GROUP` hands the ignore attribute
+    // down, and Git Bash does exactly that where PowerShell does not. Measured on one commit
+    // on one machine: from PowerShell this test passed, from Git Bash it failed with cmd.exe
+    // running on to completion. That is the test reading its launcher rather than the product.
+    //
+    // Calling the application's own entry point rather than the raw API below, because it is
+    // what production does before every spawn (`adapters::pty`), and it guards this process
+    // first — clearing the attribute alone re-arms the default handler, so a Ctrl+C in the
+    // terminal running `cargo test` would kill the run.
+    steward_ide_lib::adapters::console_ctrl::enable_interrupts_for_sessions();
+
     // The control, and on its own a correction: `terminal-surface` D4c concluded that no
     // byte written to a ConPTY ever becomes a control event on this machine. It does. Both
     // shells, this crate's pseudoconsole crate, no console attachment anywhere.
