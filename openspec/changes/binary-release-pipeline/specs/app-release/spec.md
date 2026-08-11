@@ -65,12 +65,12 @@ produced, no artifact from that release is published.
 
 ### Requirement: A release is refused when it would ship a non-production trust configuration
 
-The application carries the identity of the content it trusts and the location it fetches
-content from. These are fixed at build time and cannot be corrected in an installed copy.
-
 Before any artifact is published, the system SHALL verify that the source being built
 carries the production trust anchor and the production content locations. If either is a
 development or test value, the release SHALL be refused.
+
+The application carries the identity of the content it trusts and the location it fetches
+content from. These are fixed at build time and cannot be corrected in an installed copy.
 
 #### Scenario: The source carries production trust settings
 
