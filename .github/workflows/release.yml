@@ -1,0 +1,196 @@
+# Builds and publishes the application's installable artifacts.
+#
+# Cutting a release is one deliberate act — pushing a version tag — and everything
+# after it is automatic. Nothing here is dispatchable by hand: a release must be a
+# thing the repository's history records, so the tag is the trigger.
+#
+# The order of the jobs is the design. `gate` runs first and compiles nothing,
+# because the trust anchor and the content endpoints are baked into the binary and
+# a wrong one cannot be corrected after publication — only another binary fixes it
+# (change binary-release-pipeline, design D4). A refusal there costs seconds
+# instead of a two-platform matrix build.
+#
+# Publication is all-or-nothing. The matrix uploads into a DRAFT release, which no
+# recipient can see, and `publish` flips it to public only after every platform has
+# succeeded. A half-published release would make version `x` mean different things
+# on different platforms, which is worse than no release at all.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+env:
+  # The application lives in a subdirectory; the action needs to be told so.
+  PROJECT_PATH: app
+  # Where a recipient is sent to make sense of the unsigned-publisher warning.
+  INSTALL_DOC: https://github.com/dufeutech/Steward-IDE/blob/main/docs/installing.md
+
+jobs:
+  # Everything that can refuse a release before anything is compiled.
+  gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+
+      # First, and deliberately before any toolchain is installed: this is the only
+      # failure in the release path that publication makes permanent. It also
+      # compares the tag against the crate version, so a mistyped tag is a refused
+      # release rather than a mislabelled artifact.
+      - name: Refuse a non-production tree
+        working-directory: scripts/py
+        run: uv run --package packpub packpub check-release --version "$GITHUB_REF_NAME"
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+
+      - name: Install the Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      # The binary carries embedded pack content against a size budget. Checking it
+      # here means an over-budget artifact fails before it can be bundled, let alone
+      # published.
+      - name: Check the embedded surface against its budget
+        working-directory: app/src-tauri
+        run: cargo test --test embedded_surface
+
+  # A draft holds the assets while the matrix runs. Created once, before the matrix,
+  # so both platforms upload into the same release.
+  create-release:
+    needs: gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.draft.outputs.id }}
+    steps:
+      # Created through the API rather than `gh release create` because a draft is
+      # not yet associated with its tag, so it cannot be looked up by tag afterwards
+      # — this returns the id in the same call that creates it.
+      - name: Create the draft release
+        id: draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          body=$(cat <<EOF
+          Installers for Windows and Linux. macOS is not covered by this release.
+
+          **These artifacts are unsigned.** Windows and Linux will both warn that the
+          publisher is unrecognized on first launch. That is a consequence of how the
+          release is produced, not a fault in the artifact. To confirm an artifact is
+          the one this project published, verify its provenance:
+
+          \`\`\`
+          gh attestation verify <file> --repo $GITHUB_REPOSITORY
+          \`\`\`
+
+          Installation instructions: $INSTALL_DOC
+          EOF
+          )
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
+            -f tag_name="$GITHUB_REF_NAME" \
+            -f name="$GITHUB_REF_NAME" \
+            -f body="$body" \
+            -F draft=true \
+            -F prerelease=false \
+            --jq .id)
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: create-release
+    permissions:
+      contents: write # upload assets into the draft
+      id-token: write # provenance attestation (keyless signing)
+      attestations: write
+    strategy:
+      # Deliberately off: one platform failing must stop the other from uploading,
+      # because a draft holding half its assets is what `publish` would otherwise
+      # release. This is the all-or-nothing rule the spec requires.
+      fail-fast: true
+      matrix:
+        include:
+          # 22.04 rather than latest: the glibc an AppImage is built against sets the
+          # oldest distribution it will run on, so the older runner is the wider one.
+          - platform: ubuntu-22.04
+          - platform: windows-latest
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+
+      # `file`, `xdg-utils`, `libxdo-dev` and `libssl-dev` are what bundling needs on
+      # top of the build dependencies; the AppImage tooling is downloaded at bundle
+      # time rather than vendored, which is what `wget` is for. Verified in
+      # scripts/docker/unix-tests.Dockerfile before this workflow existed.
+      - name: Install the Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
+            file wget xdg-utils libxdo-dev libssl-dev
+
+      # The bundler decides the artifact set from `tauri.conf.json`'s explicit
+      # targets, and takes the version from the crate — neither is passed here,
+      # because a value passed in is a value that can disagree (design D2).
+      - name: Build and upload the bundles
+        id: tauri
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: ${{ env.PROJECT_PATH }}
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+
+      # The action reports the bundles it produced as a JSON array; attestation wants
+      # them one per line.
+      - name: List the bundles for attestation
+        id: bundles
+        shell: bash
+        run: |
+          {
+            echo "paths<<ARTIFACTS"
+            echo '${{ steps.tauri.outputs.artifactPaths }}' | jq -r '.[]'
+            echo "ARTIFACTS"
+          } >> "$GITHUB_OUTPUT"
+
+      # Same mechanism publish-pack.yml applies to signed metadata, pinned to the
+      # same major so the repository holds one answer for attestation (design D5).
+      # This binds each artifact's digest to this commit and this workflow run, which
+      # is what lets a recipient establish origin without an unsigned artifact having
+      # to vouch for itself.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: ${{ steps.bundles.outputs.paths }}
+
+  # Reached only when every matrix entry succeeded, which is what makes publication
+  # all-or-nothing.
+  publish:
+    needs: [create-release, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api -X PATCH \
+            "repos/$GITHUB_REPOSITORY/releases/${{ needs.create-release.outputs.release_id }}" \
+            -F draft=false
