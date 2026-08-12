@@ -285,13 +285,22 @@ fn a_new_process_group_is_what_breaks_the_interrupt_and_restoring_the_attribute_
     // is documented as disabling Ctrl+C "for all processes within the new process group",
     // and the attribute is inherited, so it reaches the `conhost` that `CreatePseudoConsole`
     // spawns and every process on that pseudoconsole.
+    //
+    // The first assertion below measures a property of `portable-pty` as much as of this
+    // explanation, so its failure has two readings and the message must offer both: the
+    // crate omits the corrective call today, and if a future version makes it, the broken
+    // arm stops being reachable through `native_pty_system()`. Read the crate version before
+    // concluding the diagnosis was wrong (Rule 6 — a check measures the product, and this
+    // one cannot fully separate the two).
     let broken = measure_in_a_new_process_group(false);
     let fixed = measure_in_a_new_process_group(true);
 
     assert!(
         !broken,
         "a pseudoconsole created from a new process group must NOT be interruptible — if it \
-         is, the application's failure has some other cause and this explanation is refuted"
+         is, then either the application's failure has some other cause and this explanation \
+         is refuted, or portable-pty now makes the SetConsoleCtrlHandler call itself. Check \
+         the resolved portable-pty version against 0.9.0 before concluding the first"
     );
     assert!(
         fixed,

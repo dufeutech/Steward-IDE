@@ -170,6 +170,16 @@ Concrete tool names live here only — `.canon/` and `openspec/specs/` stay abst
   `conpty` (Windows-only, unreleased since 2024-09).
 - **Isolation**: unchanged — `adapters/pty.rs` and `adapters/console_ctrl.rs`. No
   `portable_pty` type reaches the core.
+- **Upstream: not filed** (2026-08-11, closing the open question this re-check was run to
+  inform). The proposal the survey was meant to support does not survive it. The call mutates
+  the _calling process's_ Ctrl+C disposition — global state its caller owns. `node-pty` makes
+  it because `node-pty` is the terminal layer; `portable-pty` is a general PTY abstraction,
+  and a maintainer could correctly refuse to take a process-global side effect on `openpty`.
+  That is the position this repository already holds: the attribute belongs to this process,
+  not to the crate's. Filing would argue upstream for a change we decided is ours to make.
+  The release cadence settles what remains: a merged fix would delete nothing here. The
+  survey's finding — that no Rust crate makes this call, and only `node-pty` does — is kept
+  above because it is what justifies the correction, not because it is owed to anyone.
 
 ### Decision: Provenance attestation version — stay on the wrapper, bump both workflows to `@v4`
 
