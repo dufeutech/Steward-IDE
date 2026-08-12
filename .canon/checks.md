@@ -52,10 +52,21 @@ and bundles Windows artifacts, but executes no test there — the only Rust suit
 path runs is `embedded_surface`, on Linux. Building for a platform establishes that the code
 compiles; `terminal_interrupt_windows` has never run anywhere except a developer's machine.
 
+**One release artifact has been installed and launched by hand.** On 2026-08-12 the `v0.1.0`
+NSIS installer was run on a Windows machine that did not build it. SmartScreen warned that the
+publisher is unrecognized — the outcome `docs/installing.md` states — and the installed
+application launched with a working terminal, Ctrl+C included. That is the first evidence the
+interrupt fix holds in a shipped binary away from the build machine, and it is exactly one
+manual trial: it ran no assertion, exercised no controlled failure arm, and is **not**
+`terminal_interrupt_windows`, which remains as described above. Still unobserved: the MSI,
+which nobody has installed, and a machine enforcing Smart App Control, which no release
+artifact has met — so `installing.md`'s "may be blocked outright" stays a prediction.
+
 **What macOS coverage does not establish.** No Gatekeeper, quarantine, notarization, signing or
-launch property is verified on any platform, and no macOS artifact is built, published or
-launched — macOS is covered by the checks and is **not** in the release platform set. The two
-sets are separate by design.
+launch property is verified by any **check** on any platform — the by-hand Windows install
+recorded above is an observation, not a check, and covers no other platform — and no macOS
+artifact is built, published or launched. macOS is covered by the checks and is **not** in the
+release platform set. The two sets are separate by design.
 
 A launch check here would be worse than none. Gatekeeper's verdict depends on the
 `com.apple.quarantine` attribute, which is set by the downloading application; command-line
