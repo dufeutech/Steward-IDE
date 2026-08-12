@@ -33,7 +33,7 @@ precedence and ownership contract.
 | [3](.canon/rules/03-commits.md)          | finishing any multi-file task        | Review the diff, split by intent, Conventional Commits, never co-author.                                                      |
 | [4](.canon/rules/04-merges.md)           | any branch merge                     | A clean merge is not a correct one — you are the reviewer.                                                                    |
 | [5](.canon/rules/05-cleanup.md)          | a merge just landed                  | Delete what the merge superseded; git history is the history.                                                                 |
-| [6](.canon/rules/06-validation.md)       | about to claim something is done     | Run the checks in `.canon/checks.md`; report what you couldn't run as unverified.                                             |
+| [6](.canon/rules/06-validation.md)       | about to claim something is done     | Run the checks in `.canon/checks.md`; a check measures the product, not its environment; what you couldn't run is unverified. |
 | [7](.canon/rules/07-coherence.md)        | code sits beside an existing pattern | Coherence beats minimal diff; consolidate duplicates, flag out-of-scope mess.                                                 |
 | [8](.canon/rules/08-docs.md)             | architecture or API changed          | Docs that contradict the code are defects — same change set, not later.                                                       |
 | [9](.canon/rules/09-standards.md)        | defining schemas, IDs, vocabularies  | Adopt the global standard: JSON Schema/OpenAPI/AsyncAPI; Wikidata/DOI/ORCID/LEI + UUID; Schema.org/RDF/ISO.                   |
